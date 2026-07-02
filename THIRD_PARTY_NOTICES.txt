@@ -1,0 +1,17 @@
+# Editor dependencies
+
+These files are self-hosted in `ui/vendor/` and do not use a CDN at runtime.
+
+| Component | Version | License | Source |
+| --- | --- | --- | --- |
+| TinyMCE | 8.10.2 | GPL-2.0-or-later or commercial license; this prototype uses GPL mode | https://github.com/tinymce/tinymce |
+| DOMPurify | 3.4.17 | Apache-2.0 OR MPL-2.0 | https://github.com/cure53/DOMPurify |
+
+Original license notices are retained in `ui/vendor/tinymce/license.txt` and
+`ui/vendor/dompurify/LICENSE`. Distribution of the app with TinyMCE is subject to
+its GPL terms unless a commercial license is obtained. The Rust and UI source
+for this prototype is present in this workspace; do not remove dependency notices.
+
+Packages were downloaded from the official npm registry. Their tarball SHA-512
+digests were checked against the registry's `dist.integrity` metadata before extraction.
+Only the editor runtime, selected plugins, skins and license files are included.

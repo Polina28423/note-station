@@ -1,0 +1,25 @@
+.tools/
+target/
+*.log
+.note_data/
+
+# Original third-party application and local screenshots
+/original/
+/screenshots/
+
+# Generated Tauri schemas and Python preview cache
+/src-tauri/gen/schemas/
+__pycache__/
+*.py[cod]
+
+# Local credentials, connection certificates and session files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+session.bin
+session.bin.*
+
