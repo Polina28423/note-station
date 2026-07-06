@@ -1,0 +1,66 @@
+{
+  "version": "2.0.0",
+  "options": {
+    "cwd": "${workspaceFolder}",
+    "env": {
+      "CARGO_HOME": "${workspaceFolder}\\.tools\\cargo",
+      "RUSTUP_HOME": "${workspaceFolder}\\.tools\\rustup",
+      "PATH": "${workspaceFolder}\\.tools\\cargo\\bin;${env:PATH}"
+    }
+  },
+  "tasks": [
+    {
+      "label": "Rust: build",
+      "type": "process",
+      "command": "${workspaceFolder}\\.tools\\cargo\\bin\\cargo.exe",
+      "args": ["build", "--locked", "-p", "note-station-rust"],
+      "problemMatcher": ["$rustc"],
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "Rust: run",
+      "type": "process",
+      "command": "${workspaceFolder}\\.tools\\cargo\\bin\\cargo.exe",
+      "args": ["run", "--locked", "-p", "note-station-rust"],
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "Rust: check",
+      "type": "process",
+      "command": "${workspaceFolder}\\.tools\\cargo\\bin\\cargo.exe",
+      "args": ["check", "--locked", "-p", "note-station-rust"],
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "Rust: test",
+      "type": "process",
+      "command": "${workspaceFolder}\\.tools\\cargo\\bin\\cargo.exe",
+      "args": ["test", "--locked", "-p", "note-station-rust"],
+      "problemMatcher": ["$rustc"],
+      "group": { "kind": "test", "isDefault": true }
+    },
+    {
+      "label": "Rust: build release",
+      "type": "process",
+      "command": "${workspaceFolder}\\.tools\\cargo\\bin\\cargo.exe",
+      "args": ["build", "--locked", "-p", "note-station-rust", "--release"],
+      "problemMatcher": ["$rustc"],
+      "group": "build"
+    },
+    {
+      "label": "Rust: format",
+      "type": "process",
+      "command": "${workspaceFolder}\\.tools\\cargo\\bin\\cargo.exe",
+      "args": ["fmt", "--all"],
+      "problemMatcher": []
+    },
+    {
+      "label": "UI: test",
+      "type": "process",
+      "command": "node",
+      "args": ["--test", "tests/library.test.mjs", "tests/preferences.test.mjs", "tests/startup.test.mjs"],
+      "problemMatcher": [],
+      "group": "test"
+    }
+  ]
+}
