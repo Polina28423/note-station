@@ -23,3 +23,7 @@ __pycache__/
 session.bin
 session.bin.*
 
+# Per-NAS discovery results stay on this computer
+/docs/api/*.local.json
+node_modules/
+

@@ -1,129 +1,226 @@
 import { htmlToText } from './content.js';
+import { ClassicSurface } from './classic-editor.js';
+import { BlockSurface } from './block-editor.js';
+import { safeLink } from './editor-document.js';
+import { ALIGNMENTS, normalizeColor } from './editor-styles.js';
 const $ = id => document.getElementById(id);
 export class NoteEditor {
-  constructor({ save, onSaved, status, onBusy }) {
-    Object.assign(this, { send: save, onSaved, status, onBusy });
-    this.active = false; this.saving = false; this.note = null; this.editor = null; this.dialogPromise = null;
-    $('edit-title').addEventListener('input', () => this.update());
-    $('save-note').addEventListener('click', () => this.save());
-    $('cancel-edit').addEventListener('click', () => this.leave());
-    $('keep-editing').addEventListener('click', () => this.resolveDialog('stay'));
-    $('discard-edit').addEventListener('click', () => this.resolveDialog('discard'));
-    $('save-and-continue').addEventListener('click', () => this.resolveDialog('save'));
-    $('unsaved-dialog').addEventListener('cancel', event => { event.preventDefault(); this.resolveDialog('stay'); });
-    window.addEventListener('beforeunload', event => { if (this.dirty() || this.saving) { event.preventDefault(); event.returnValue = ''; } });
-    window.addEventListener('keydown', event => {
-      if (this.active && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); this.save(); }
+  constructor({save,onSaved,status,onBusy,mode='blocks'}) {
+    Object.assign(this,{send:save,onSaved,status,onBusy});
+    this.active=false;this.saving=false;this.preferredMode=['blocks','classic'].includes(mode)?mode:'blocks';this.mode=this.preferredMode;this.bodyDirty=false;this.saveSequence=0;
+    $('edit-title').addEventListener('input',()=>this.update());
+    $('save-note').addEventListener('click',()=>this.save());
+    $('cancel-edit').addEventListener('click',()=>this.leave());
+    $('editor-undo').addEventListener('click',()=>this.travel('undo'));
+    $('editor-redo').addEventListener('click',()=>this.travel('redo'));
+    const formatting=$('editor-formatting');
+    formatting.addEventListener('pointerdown',e=>{if(e.target.closest('button'))e.preventDefault();});
+    formatting.addEventListener('mousedown',e=>{if(e.target.closest('button'))e.preventDefault();});
+    formatting.addEventListener('click',e=>{
+      const button=e.target.closest('button');if(!button||button.disabled)return;
+      if(button.id==='format-link')this.openLink();
+      else if(button.id==='format-text-color')this.openColor('foreColor');
+      else if(button.id==='format-background')this.openColor('hiliteColor');
+      else if(button.dataset.align)this.align(button.dataset.align);
+      else if(button.dataset.format)this.format(button.dataset.format);
+    });
+    document.addEventListener('selectionchange',()=>this.updateFormatting());
+    document.addEventListener('focusin',()=>this.updateFormatting());
+    const palette=$('style-color-palette');
+    for(const color of ['#000000','#505a64','#808080','#ffffff','#c62828','#ef6c00','#f9a825','#2e7d32','#00838f','#1565c0','#6a1b9a','#ad1457','#ffcdd2','#ffe0b2','#fff2a8','#c8e6c9','#b3e5fc','#d1c4e9']){
+      const button=document.createElement('button');button.type='button';button.className='color-swatch';button.dataset.color=color;button.style.backgroundColor=color;button.title=color;button.setAttribute('aria-label',`Цвет ${color}`);palette.append(button);
+    }
+    palette.addEventListener('click',event=>{const color=event.target.closest('[data-color]')?.dataset.color;if(color)this.applyColor(color);});
+    $('style-color-form').addEventListener('submit',event=>{event.preventDefault();this.applyColor($('style-color-custom').value);});
+    $('style-color-reset').addEventListener('click',()=>this.applyColor(this.colorSelection?.command==='hiliteColor'?'transparent':'#505a64'));
+    $('style-color-cancel').addEventListener('click',()=>{$('style-color-dialog').close();this.colorSelection=null;});
+    $('style-color-dialog').addEventListener('cancel',()=>{this.colorSelection=null;});
+    $('format-link-form').addEventListener('submit',event=>{
+      event.preventDefault();const href=safeLink($('format-link-url').value);
+      if(!href){$('format-link-error').textContent='Укажите https://, http://, mailto: или другую поддерживаемую ссылку.';return;}
+      const saved=this.linkSelection;$('format-link-dialog').close();this.linkSelection=null;
+      if(saved?.surface===this.surface)this.format('createLink',href,saved.range);
+    });
+    $('format-link-cancel').addEventListener('click',()=>{$('format-link-dialog').close();this.linkSelection=null;});
+    $('format-link-remove').addEventListener('click',()=>{const saved=this.linkSelection;$('format-link-dialog').close();this.linkSelection=null;if(saved?.surface===this.surface)this.format('unlink',undefined,saved.range);});
+    $('format-link-dialog').addEventListener('cancel',()=>{this.linkSelection=null;});
+    for(const [id,choice] of [['keep-editing','stay'],['discard-edit','discard'],['save-and-continue','save']]) $(id).addEventListener('click',()=>this.resolveDialog(choice));
+    $('unsaved-dialog').addEventListener('cancel',e=>{e.preventDefault();this.resolveDialog('stay');});
+    for(const [id,choice] of [['keep-protected',false],['remove-protected',true]]) $(id).addEventListener('click',()=>{ $('protected-dialog').close();this.resolveProtected?.(choice); });
+    $('protected-dialog').addEventListener('cancel',e=>{e.preventDefault();$('protected-dialog').close();this.resolveProtected?.(false);});
+    const modified=()=>{if(this.active&&!this.saving&&!this.historyBusy){this.bodyDirty=true;this.update();}};
+    $('block-content').addEventListener('input',modified,true);
+    $('block-content').addEventListener('keydown',e=>{if(e.key==='Backspace'||e.key==='Delete'||e.key==='Enter')modified();},true);
+    window.addEventListener('beforeunload',e=>{if(this.dirty()||this.saving){e.preventDefault();e.returnValue='';}});
+    window.addEventListener('keydown',e=>{
+      if(!this.active)return;
+      if($('format-link-dialog').open||$('style-color-dialog').open){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s')e.preventDefault();return;}
+      if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();this.save();}
+      if(this.mode==='blocks'&&(e.ctrlKey||e.metaKey)&&e.target.closest?.('#block-content')&&['z','y'].includes(e.key.toLowerCase())) {
+        e.preventDefault();this.travel(e.key.toLowerCase()==='y'||e.shiftKey?'redo':'undo');
+      }
     });
   }
-  async init() {
-    if (this.editor) return;
-    if (!window.tinymce || !window.DOMPurify) throw Error('Не удалось загрузить редактор. Перезапустите приложение.');
-    window.tinymce.addI18n('ru', { 'Undo':'Отменить','Redo':'Повторить','Bold':'Полужирный','Italic':'Курсив','Underline':'Подчёркнутый','Blocks':'Стиль','Paragraph':'Абзац','Headings':'Заголовки','Heading 1':'Заголовок 1','Heading 2':'Заголовок 2','Heading 3':'Заголовок 3','Bullet list':'Маркированный список','Numbered list':'Нумерованный список','Blockquote':'Цитата','Insert/edit link':'Вставить ссылку','Table':'Таблица','Insert table':'Вставить таблицу','Remove formatting':'Убрать форматирование','Source code':'HTML-код','Save':'Применить','Cancel':'Отмена','Ok':'ОК','Close':'Закрыть','URL':'Адрес','Text to display':'Текст ссылки','Title':'Заголовок','Open link in...':'Открыть ссылку','None':'Нет','New window':'Новое окно','Words':'Слов','Words: {0}':'Слов: {0}' });
-    const editors = await window.tinymce.init({
-      selector: '#edit-content', base_url: 'vendor/tinymce', suffix: '.min', license_key: 'gpl',
-      language: 'ru',
-      plugins: 'lists link table code', menubar: false, promotion: false, branding: false,
-      toolbar: 'undo redo | blocks | bold italic underline | bullist numlist | blockquote link table | removeformat code',
-      toolbar_mode: 'sliding', resize: false, height: '100%',
-      convert_urls: false, relative_urls: false, remove_script_host: false,
-      paste_data_images: false, automatic_uploads: false,
-      noneditable_class: 'mceNonEditable',
-      content_security_policy: "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';",
-      content_style: 'body{font:15px/1.7 Arial,sans-serif;color:#505a64;margin:20px} .mceNonEditable{display:inline-block;padding:8px 12px;background:#edf3f8;border:1px solid #cfdae5;color:#7a8a99;border-radius:3px} table{border-collapse:collapse} td,th{border:1px solid #d7e1eb;padding:8px}',
-      setup: editor => {
-        editor.on('input change Undo Redo', () => this.update());
-        editor.addShortcut('meta+s', 'Сохранить заметку', () => this.save());
-      },
-    });
-    this.editor = editors[0];
+  change(error,changed) {
+    if(!this.active)return;
+    if(error){$('save-error').textContent=String(error);this.bodyDirty=true;}
+    else this.bodyDirty=this.mode==='classic'?this.surface.changed():changed===undefined?true:changed;
+    this.update();
   }
-  clean(html) {
-    return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS: ['style','form','input','button','textarea','iframe','object','embed'], ADD_ATTR: ['data-note-protected'] });
-  }
-  protectMedia(html) {
-    const template = document.createElement('template'); template.innerHTML = html;
-    this.media = new Map();
-    for (const element of [...template.content.querySelectorAll('img,iframe,object,embed,audio,video')]) {
-      if (!template.content.contains(element)) continue;
-      const id = crypto.randomUUID(); this.media.set(id, element.outerHTML);
-      const placeholder = document.createElement('span');
-      placeholder.className = 'mceNonEditable'; placeholder.dataset.noteProtected = id;
-      placeholder.textContent = element.tagName === 'IMG' ? '[Изображение сохранится]' : '[Вложение сохранится]';
-      element.replaceWith(placeholder);
-    }
-    return this.clean(template.innerHTML);
-  }
-  output() {
-    if (this.editor.getContent() === this.baseline) return this.note.content;
-    const template = document.createElement('template'); template.innerHTML = this.clean(this.editor.getContent());
-    for (const element of template.content.querySelectorAll('[data-note-protected]')) {
-      const original = this.media.get(element.dataset.noteProtected);
-      if (original) {
-        const inert = document.createElement('template'); inert.innerHTML = original;
-        element.replaceWith(inert.content);
-      } else { element.removeAttribute('data-note-protected'); }
-    }
-    return template.innerHTML;
-  }
-  async start(note) {
-    if (this.active || this.saving || this.opening) return;
-    if (note.encrypted || note.ver == null) { this.status('Эту заметку пока нельзя редактировать: нет доступного текста или версии.', true); return; }
-    this.opening = true; this.onBusy(true);
+  async start(note,{focusBody=false,anchor}={}) {
+    if(this.active||this.saving||this.opening)return;
+    if(note.encrypted||note.ver==null){this.status('Эту заметку пока нельзя редактировать: нет доступного текста или версии.',true);return;}
+    this.opening=true;this.onBusy(true);this.note=note;this.mode=this.preferredMode;
     try {
-      $('reader-empty').hidden = true; $('reader-document').hidden = true; $('note-editor').hidden = false;
-      await this.init();
-      this.note = note;
-      $('edit-title').value = note.title;
-      this.editor.setContent(this.protectMedia(note.content));
-      this.editor.undoManager.clear(); this.baseline = this.editor.getContent();
-      this.active = true; $('edit-note').disabled = true; $('save-error').textContent = '';
-      for (const id of ['font-smaller','font-larger','copy-note']) $(id).disabled = true;
-      this.update(); $('edit-title').focus();
-    } catch(error) { $('note-editor').hidden = true; $('reader-document').hidden = false; this.status(String(error), true); }
-    finally { this.opening = false; this.onBusy(false); }
+      $('reader-empty').hidden=true;$('reader-document').hidden=true;$('note-editor').hidden=false;
+      $('edit-title').value=note.title;$('save-error').textContent='';
+      await this.loadSurface(note);
+      this.active=true;this.bodyDirty=false;
+      for(const id of ['font-smaller','font-larger','copy-note'])$(id).disabled=true;
+      if(focusBody)this.surface.focus(anchor);else $('edit-title').focus();
+    } catch(error) {
+      this.surface?.destroy();this.surface=null;this.note=null;
+      $('note-editor').hidden=true;$('reader-document').hidden=false;this.status(String(error),true);
+    } finally {this.opening=false;this.onBusy(false);this.update();}
   }
-  dirty() { return !!(this.active && this.editor && ($('edit-title').value !== this.note.title || this.editor.getContent() !== this.baseline)); }
-  update() {
-    const dirty = this.dirty();
-    $('edit-state').textContent = this.saving ? 'Сохранение…' : dirty ? 'Есть несохранённые изменения' : 'Нет изменений';
-    $('save-note').disabled = this.saving || !dirty;
-    $('cancel-edit').disabled = this.saving;
+  async loadSurface(note) {
+    const create=()=>{
+      $('block-content').hidden=this.mode!=='blocks';$('classic-surface').hidden=this.mode!=='classic';
+      this.surface=this.mode==='blocks'?new BlockSurface((error,changed)=>this.change(error,changed)):new ClassicSurface(()=>this.change(),()=>this.updateFormatting());
+    };
+    create();
+    try {await this.surface.load(note);}
+    catch(error) {
+      this.surface?.destroy();
+      if(this.mode!=='blocks')throw error;
+      this.mode='classic';create();await this.surface.load(note);
+      this.status('Не удалось открыть Editor.js. Заметка открыта в классическом редакторе.',true);
+    }
   }
-  close() {
-    this.active = false; this.note = null; this.media?.clear();
-    if (this.editor) { this.editor.setContent(''); this.editor.undoManager.clear(); }
-    $('edit-title').value = ''; $('save-error').textContent = '';
-    $('note-editor').hidden = true;
-    for (const id of ['font-smaller','font-larger','copy-note']) $(id).disabled = false;
+  dirty(){return !!(this.active&&this.note&&($('edit-title').value!==this.note.title||(this.mode==='classic'?this.surface.changed():this.bodyDirty)));}
+  update(){
+    $('edit-state').textContent=this.saving?'Сохранение…':this.opening?'Открытие редактора…':this.dirty()?'Есть несохранённые изменения':'Нет изменений';
+    const locked=this.saving||this.opening||this.historyBusy||this.checking;
+    $('save-note').disabled=locked||!this.dirty();$('cancel-edit').disabled=locked;
+    $('editor-undo').disabled=locked;$('editor-redo').disabled=locked;
+    this.updateFormatting();
   }
-  async save() {
-    if (!this.active || this.saving) return false;
-    if (!this.dirty()) return true;
-    if (!$('edit-title').value.trim()) { $('save-error').textContent = 'Введите заголовок заметки.'; $('edit-title').focus(); return false; }
-    this.saving = true; this.onBusy(true); this.status('Сохранение заметки…'); $('edit-title').disabled = true;
-    this.editor.mode.set('readonly'); this.update(); $('save-error').textContent = '';
+  updateFormatting(){
+    let state={};try{if(this.active)state=this.surface?.formatState() || {};}catch{}
+    const locked=!this.active||this.saving||this.opening||this.historyBusy||this.checking||!state.available;
+    for(const button of $('editor-formatting').querySelectorAll('button')) {
+      button.disabled=!!locked;
+      if(['bold','italic','underline','strikeThrough'].includes(button.dataset.format))button.setAttribute('aria-pressed',String(!!state[button.dataset.format]));
+      if(button.dataset.align)button.setAttribute('aria-pressed',String(state.alignment===button.dataset.align));
+    }
+    $('format-text-color').style.setProperty('--selected-color',normalizeColor(state.color) || '#505a64');
+    $('format-background').style.setProperty('--selected-color',normalizeColor(state.background) || '#fff2a8');
+  }
+  format(command,value,range){
+    if(!this.active||this.saving||this.opening||this.historyBusy||this.checking)return;
+    try{if(this.surface.format(command,value,range))this.change();else this.status('Установите курсор или выделите текст внутри редактируемого блока.',true);}
+    catch(error){$('save-error').textContent=String(error);}
+    this.updateFormatting();
+  }
+  align(alignment){
+    if(!this.active||this.saving||this.opening||this.historyBusy||this.checking||!ALIGNMENTS.includes(alignment))return;
+    try{if(this.surface.align(alignment))this.change();}catch(error){$('save-error').textContent=String(error);}
+    this.updateFormatting();
+  }
+  openColor(command){
+    const range=this.surface?.selectionRange();if(!range||!this.surface.formatState().available)return;
+    const state=this.surface.formatState(),current=command==='foreColor'?state.color:state.background;
+    this.colorSelection={surface:this.surface,command,range};
+    $('style-color-title').textContent=command==='foreColor'?'Цвет текста':'Цвет выделения фоном';
+    $('style-color-reset').textContent=command==='foreColor'?'Обычный цвет':'Убрать выделение';
+    $('style-color-custom').value=/^#[0-9a-f]{6}$/i.test(current)?current:command==='foreColor'?'#505a64':'#fff2a8';
+    $('style-color-dialog').showModal();
+  }
+  applyColor(color){
+    const value=normalizeColor(color),saved=this.colorSelection;if(!value||!saved)return;
+    $('style-color-dialog').close();this.colorSelection=null;
+    if(saved.surface===this.surface)this.format(saved.command,value,saved.range);
+  }
+  openLink(){
+    const range=this.surface?.selectionRange();if(!range)return;
+    const node=range.startContainer.nodeType===1?range.startContainer:range.startContainer.parentElement;
+    const link=node.closest('a');
+    if(range.collapsed&&!link){this.status('Выделите текст, для которого нужно добавить ссылку.',true);return;}
+    if(range.collapsed&&link)range.selectNodeContents(link);
+    this.linkSelection={surface:this.surface,range};$('format-link-url').value=link?.getAttribute('href') || '';$('format-link-error').textContent='';
+    $('format-link-dialog').showModal();$('format-link-url').focus();
+  }
+  close(){
+    if($('style-color-dialog').open)$('style-color-dialog').close();this.colorSelection=null;
+    if($('format-link-dialog').open)$('format-link-dialog').close();this.linkSelection=null;
+    this.active=false;this.surface?.destroy();this.surface=null;this.note=null;this.bodyDirty=false;
+    $('edit-title').value='';$('save-error').textContent='';$('note-editor').hidden=true;
+    $('editor-surface').inert=false;
+    for(const id of ['font-smaller','font-larger','copy-note'])$(id).disabled=false;
+  }
+  async travel(method){
+    if(!this.active||this.saving||this.opening||this.historyBusy||this.checking)return;
+    this.historyBusy=true;this.onBusy(true);$('editor-surface').inert=true;this.update();
+    try {await this.surface[method]();}
+    catch(error){$('save-error').textContent=String(error);}
+    finally{this.historyBusy=false;$('editor-surface').inert=false;this.onBusy(false);this.update();}
+  }
+  async save(){
+    if(!this.active||this.saving||this.opening||this.historyBusy||this.checking)return false;
+    if(!$('edit-title').value.trim()){$('save-error').textContent='Введите заголовок заметки.';$('edit-title').focus();return false;}
+    this.saving=true;this.onBusy(true);$('edit-title').disabled=true;$('editor-surface').inert=true;this.update();$('save-error').textContent='';
     try {
-      const content = this.output();
-      const result = await this.send({ id: this.note.object_id, expectedVersion: this.note.ver,
-        title: $('edit-title').value, content, brief: htmlToText(content).slice(0, 300) });
-      this.close(); this.onSaved(result);
+      let content;
+      if(this.mode==='blocks') {
+        const state=await this.surface.content();this.bodyDirty=state.changed;
+        if(state.removed.length) {
+          $('protected-count').textContent=String(state.removed.length);
+          const accepted=await new Promise(resolve=>{this.resolveProtected=resolve;$('protected-dialog').showModal();});
+          this.resolveProtected=null;if(!accepted)return false;
+        }
+        content=this.surface.output(state.data,state.removed);
+      } else content=this.surface.output();
+      if(content===this.note.content&&$('edit-title').value===this.note.title){this.bodyDirty=false;return true;}
+      this.status('Сохранение заметки…');
+      const result=await this.send({id:this.note.object_id,expectedVersion:this.note.ver,title:$('edit-title').value,content,brief:htmlToText(content).slice(0,300)});
+      this.lastSaved=result.note;this.saveSequence++;this.close();
+      try {this.onSaved(result);} catch {this.status('Заметка сохранена, но не удалось обновить её отображение.',true);}
       return true;
-    } catch(error) { $('save-error').textContent = String(error); this.status('Не удалось сохранить заметку. Изменения остаются в редакторе.', true); return false; }
-    finally { this.saving = false; $('edit-title').disabled = false; this.editor.mode.set('design'); this.onBusy(false); this.update(); }
+    } catch(error){$('save-error').textContent=String(error);this.bodyDirty=true;this.status('Не удалось сохранить заметку. Изменения остаются в редакторе.',true);return false;}
+    finally{this.saving=false;$('edit-title').disabled=false;$('editor-surface').inert=false;this.onBusy(false);this.update();}
   }
-  resolveDialog(choice) { $('unsaved-dialog').close(); this.resolve?.(choice); }
-  async leave() {
-    if (this.saving || this.opening) { this.status('Дождитесь завершения операции с редактором.', true); return false; }
-    if (!this.active) return true;
-    if (!this.dirty()) { this.close(); $('reader-document').hidden = false; $('edit-note').disabled = false; return true; }
-    if (this.dialogPromise) return this.dialogPromise;
-    this.dialogPromise = (async () => {
-      const choice = await new Promise(resolve => { this.resolve = resolve; $('unsaved-dialog').showModal(); });
-      if (choice === 'stay') return false;
-      if (choice === 'save') return this.save();
-      this.close(); $('reader-document').hidden = false; $('edit-note').disabled = false; return true;
+  resolveDialog(choice){$('unsaved-dialog').close();this.resolve?.(choice);}
+  async leave(){
+    if(this.dialogPromise)return this.dialogPromise;
+    if(this.saving||this.opening||this.historyBusy||this.checking){this.status('Дождитесь завершения операции с редактором.',true);return false;}
+    if(!this.active)return true;
+    if(this.mode==='blocks') {
+      this.checking=true;this.onBusy(true);this.update();
+      try {this.bodyDirty=(await this.surface.content()).changed;}
+      catch(error){$('save-error').textContent=String(error);this.bodyDirty=true;}
+      finally{this.checking=false;this.onBusy(false);this.update();}
+    }
+    const finish=()=>{this.close();$('reader-document').hidden=false;return true;};
+    if(!this.dirty())return finish();
+    this.dialogPromise=(async()=>{
+      const choice=await new Promise(resolve=>{this.resolve=resolve;$('unsaved-dialog').showModal();});
+      if(choice==='stay')return false;
+      if(choice==='save'){
+        const saved=await this.save();
+        if(saved&&this.active)return finish();
+        return saved;
+      }
+      return finish();
     })();
-    try { return await this.dialogPromise; } finally { this.dialogPromise = null; this.resolve = null; }
+    try{return await this.dialogPromise;}finally{this.dialogPromise=null;this.resolve=null;}
+  }
+  async switchMode(mode){
+    if(!['blocks','classic'].includes(mode)||this.saving||this.opening||this.historyBusy||this.checking)return false;
+    if(!this.active||mode===this.mode){this.preferredMode=mode;this.mode=mode;return true;}
+    const note=this.note,sequence=this.saveSequence,previous=this.preferredMode;
+    if(!await this.leave())return false;
+    this.preferredMode=mode;await this.start(this.saveSequence>sequence?this.lastSaved:note,{focusBody:true});
+    if(!this.active){this.preferredMode=previous;return false;}
+    return true;
   }
 }

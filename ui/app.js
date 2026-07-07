@@ -3,7 +3,7 @@ import { restoreAtStartup } from './startup.js';
 import { bindPanelResizing } from './panels.js';
 import { notebookCounts, visibleNotebooks, visibleNotes, noteCountLabel, notebookCountLabel, groupNotebooks, notesInShelf } from './library.js';
 import { htmlToText, safeNoteFragment } from './content.js';
-import { loadConnection, saveConnection } from './preferences.js';
+import { loadConnection, saveConnection, loadEditorMode, saveEditorMode } from './preferences.js';
 
 const $ = id => document.getElementById(id);
 const invoke = (command, args) => {
@@ -13,7 +13,10 @@ const invoke = (command, args) => {
 let notebooks = [], notes = [], notebookId = '', selectedId = '', noteRequest = 0, selectedShelf = '';
 const collapsedShelves = new Set();
 let busy = false, view = 'notes', pinned = new Set(), pinKey = '', fontSize = 16, copyText = '';
+let preferredEditor='blocks';
+try { preferredEditor=loadEditorMode(localStorage); } catch {}
 const noteEditor = new NoteEditor({
+  mode: preferredEditor,
   save: args => invoke('save_note', args), status, onBusy: setBusy,
   onSaved: result => {
     currentNote = result.note;
@@ -24,12 +27,47 @@ const noteEditor = new NoteEditor({
   },
 });
 let currentNote = null;
-$('edit-note').addEventListener('click', () => { if (currentNote && !busy) noteEditor.start(currentNote); });
+const noteBody=$('note-content');
+let bodyPointer=false;
+function editableNote(){return currentNote&&!currentNote.encrypted&&currentNote.ver!=null&&!busy&&!noteEditor.active&&!noteEditor.opening;}
+function bodyAnchor(event) {
+  const block=event.target.closest?.('p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,pre') || noteBody;
+  let offset=0;
+  const caret=document.caretRangeFromPoint?.(event.clientX,event.clientY);
+  if(caret&&block.contains(caret.startContainer)) {
+    const before=document.createRange();before.selectNodeContents(block);before.setEnd(caret.startContainer,caret.startOffset);offset=before.toString().length;
+  }
+  return {text:block.textContent,offset};
+}
+noteBody.addEventListener('pointerdown',()=>{bodyPointer=true;});
+document.addEventListener('pointerup',()=>{setTimeout(()=>{bodyPointer=false;},0);},true);
+noteBody.addEventListener('pointercancel',()=>{bodyPointer=false;});
+noteBody.addEventListener('click',event=>{
+  bodyPointer=false;
+  if(!editableNote()||window.getSelection()?.toString())return;
+  noteEditor.start(currentNote,{focusBody:true,anchor:bodyAnchor(event)});
+});
+noteBody.addEventListener('focus',()=>{if(!bodyPointer&&editableNote())noteEditor.start(currentNote,{focusBody:true});});
+noteBody.addEventListener('keydown',event=>{if((event.key==='Enter'||event.key==='F2')&&editableNote()){event.preventDefault();noteEditor.start(currentNote,{focusBody:true});}});
+$('open-settings').addEventListener('click',()=>{
+  if(busy)return;$('editor-mode').value=preferredEditor;$('app-settings').showModal();
+});
+$('cancel-settings').addEventListener('click',()=>$('app-settings').close());
+$('apply-settings').addEventListener('click',async()=>{
+  const mode=$('editor-mode').value;$('app-settings').close();
+  if(busy||!await noteEditor.switchMode(mode))return;
+  preferredEditor=mode;
+  let persisted=false;try {persisted=saveEditorMode(localStorage,mode);}catch {}
+  status(persisted?'Настройки сохранены.':'Редактор выбран до закрытия приложения: настройки не удалось сохранить.',!persisted);
+});
 function displayNote(note) {
   $('reader-document').hidden = false; $('reader-empty').hidden = true;
   $('note-title').textContent = note.title || 'Без названия';
   $('note-meta').textContent = note.encrypted ? 'Зашифрованная заметка' : 'Заметка на NAS';
-  $('edit-note').disabled = note.encrypted || note.ver == null;
+  const editable=!note.encrypted&&note.ver!=null;
+  noteBody.classList.toggle('click-to-edit',editable);
+  if(editable){noteBody.tabIndex=0;noteBody.title='Нажмите на текст, чтобы редактировать';noteBody.setAttribute('aria-label','Текст заметки. Перейдите сюда для редактирования.');}
+  else {noteBody.removeAttribute('tabindex');noteBody.removeAttribute('title');noteBody.removeAttribute('aria-label');}
   if (note.encrypted) { $('note-content').textContent = 'Расшифровка пока не поддерживается. Откройте заметку в официальном клиенте.'; copyText = ''; }
   else { $('note-content').replaceChildren(safeNoteFragment(note.content)); copyText = htmlToText(note.content); }
   $('copy-note').disabled = note.encrypted;
@@ -115,10 +153,10 @@ function status(message, error = false) {
 }
 function setBusy(value) {
   busy = value;
-  for (const id of ['connect', 'refresh', 'logout', 'session-state', 'certificate', 'clear-certificate', 'connection-mode', 'insecure-confirm', 'remember-session', 'restore-session', 'forget-session', 'startup-retry', 'startup-login', 'startup-logout']) $(id).disabled = value;
+  for (const id of ['connect', 'refresh', 'logout', 'session-state', 'certificate', 'clear-certificate', 'connection-mode', 'insecure-confirm', 'remember-session', 'restore-session', 'forget-session', 'startup-retry', 'startup-login', 'startup-logout', 'open-settings']) $(id).disabled = value;
 }
 function clearReader() {
-  noteRequest++; selectedId = ''; copyText = ''; currentNote = null; noteEditor.close(); $('edit-note').disabled = true;
+  noteRequest++; selectedId = ''; copyText = ''; currentNote = null; noteEditor.close();
   $('reader-empty').hidden = false; $('reader-document').hidden = true;
   $('note-title').textContent = ''; $('note-meta').textContent = '';
   $('note-content').replaceChildren(); $('copy-note').disabled = true;
@@ -265,7 +303,7 @@ function renderNotes() {
 async function openNote(id) {
   if (busy || !await noteEditor.leave()) return;
   const request = ++noteRequest;
-  currentNote = null; $('edit-note').disabled = true;
+  currentNote = null;
   selectedId = id; copyText = ''; renderNotes();
   $('reader-empty').hidden = true; $('reader-document').hidden = false;
   $('note-title').textContent = 'Загрузка…'; $('note-content').replaceChildren(); $('copy-note').disabled = true;

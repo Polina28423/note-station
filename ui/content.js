@@ -1,5 +1,6 @@
-// Server attributes and active elements are never copied into the live document.
-const ALLOWED = new Set(['P','DIV','BR','H1','H2','H3','H4','H5','H6','STRONG','B','EM','I','U','S','DEL','UL','OL','LI','BLOCKQUOTE','PRE','CODE','HR','TABLE','THEAD','TBODY','TFOOT','TR','TD','TH','SUP','SUB']);
+import { normalizeColor, safeStyles } from './editor-styles.js';
+// Only explicitly validated presentation values are copied; server handlers/resources are not.
+const ALLOWED = new Set(['P','DIV','BR','H1','H2','H3','H4','H5','H6','STRONG','B','EM','I','U','S','STRIKE','DEL','UL','OL','LI','BLOCKQUOTE','PRE','CODE','HR','TABLE','THEAD','TBODY','TFOOT','TR','TD','TH','SUP','SUB','SPAN','MARK','FONT']);
 const DROP = new Set(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','TEMPLATE','SVG','MATH','NOSCRIPT']);
 export function safeNoteFragment(html) {
   const template = document.createElement('template');
@@ -12,13 +13,17 @@ export function safeNoteFragment(html) {
       if (node.nodeType === Node.TEXT_NODE) { target.append(document.createTextNode(node.textContent)); continue; }
       if (node.nodeType !== Node.ELEMENT_NODE) continue;
       const tag = node.tagName.toUpperCase();
+      if (tag === 'INPUT' && node.getAttribute('type') === 'checkbox') { target.append(document.createTextNode(node.hasAttribute('checked') ? '☑ ' : '☐ ')); continue; }
       if (DROP.has(tag)) continue;
       if (tag === 'IMG') {
         if (node.getAttribute('alt')) target.append(document.createTextNode(`[${node.getAttribute('alt')}]`));
         continue;
       }
       if (ALLOWED.has(tag)) {
-        const element = document.createElement(tag.toLowerCase());
+        const element = document.createElement(tag==='FONT'?'span':tag.toLowerCase());
+        const styles=safeStyles(node.getAttribute('style'));
+        if(tag==='FONT'){const color=normalizeColor(node.getAttribute('color'));if(color)styles.color=color;}
+        for(const [key,value] of Object.entries(styles))element.style.setProperty(key,value);
         copy(node, element, depth + 1); target.append(element);
       } else { copy(node, target, depth + 1); }
     }

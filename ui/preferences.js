@@ -22,3 +22,13 @@ export function saveConnection(storage, value) {
   try { storage.setItem(KEY, JSON.stringify(safe)); return true; }
   catch { return false; }
 }
+
+const EDITOR_KEY='note-station.editor.v1';
+export function loadEditorMode(storage) {
+  try {return storage.getItem(EDITOR_KEY)==='classic'?'classic':'blocks';}
+  catch {return 'blocks';}
+}
+export function saveEditorMode(storage,mode) {
+  if(!['blocks','classic'].includes(mode))return false;
+  try {storage.setItem(EDITOR_KEY,mode);return true;} catch {return false;}
+}
