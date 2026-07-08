@@ -1,4 +1,4 @@
-import { NoteEditor } from '/editor.js';
+import { ClassicSurface as NoteEditor } from '/classic-editor.js';
 const result = document.getElementById('results');
 const checks = [];
 function check(value, name) { if (!value) throw Error(name); checks.push('PASS ' + name); }
