@@ -58,7 +58,15 @@
       "label": "UI: test",
       "type": "process",
       "command": "node",
-      "args": ["--test", "tests/library.test.mjs", "tests/preferences.test.mjs", "tests/startup.test.mjs"],
+      "args": ["--test", "tests/library.test.mjs", "tests/preferences.test.mjs", "tests/startup.test.mjs", "tests/editor-document.test.mjs"],
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "UI: browser test",
+      "type": "process",
+      "command": "node",
+      "args": ["tools/editor-build/browser-check.cjs"],
       "problemMatcher": [],
       "group": "test"
     }
