@@ -26,7 +26,7 @@ const noteEditor = new NoteEditor({
     renderNotes(); status(result.notice || 'Заметка сохранена на NAS.', !!result.notice);
   },
 });
-let currentNote = null;
+let currentNote = null, selectedAccount = null;
 const noteBody=$('note-content');
 let bodyPointer=false;
 function editableNote(){return currentNote&&!currentNote.encrypted&&currentNote.ver!=null&&!busy&&!noteEditor.active&&!noteEditor.opening;}
@@ -153,7 +153,7 @@ function status(message, error = false) {
 }
 function setBusy(value) {
   busy = value;
-  for (const id of ['connect', 'refresh', 'logout', 'session-state', 'certificate', 'clear-certificate', 'connection-mode', 'insecure-confirm', 'remember-session', 'restore-session', 'forget-session', 'startup-retry', 'startup-login', 'startup-logout', 'open-settings']) $(id).disabled = value;
+  for (const id of ['switch-account', 'add-account', 'back-to-accounts', 'startup-accounts', 'connect', 'refresh', 'logout', 'session-state', 'certificate', 'clear-certificate', 'connection-mode', 'insecure-confirm', 'remember-session', 'restore-session', 'forget-session', 'startup-retry', 'startup-login', 'startup-logout', 'open-settings']) $(id).disabled = value;
 }
 function clearReader() {
   noteRequest++; selectedId = ''; copyText = ''; currentNote = null; noteEditor.close();
@@ -163,6 +163,7 @@ function clearReader() {
   $('reader-breadcrumb').textContent = 'Заметка';
 }
 function reset() {
+  $('switch-account').hidden = true;
   notebooks = []; notes = []; notebookId = ''; selectedShelf = ''; collapsedShelves.clear(); pinned.clear(); clearReader();
   document.body.classList.remove('connected'); setFocusMode(false);
   $('notes').replaceChildren(); $('notebooks').replaceChildren(); $('pinned-notebooks').replaceChildren(); $('notebook-grid').replaceChildren(); $('search').value = '';
@@ -399,6 +400,7 @@ async function updateSavedSessionControls() {
   $('forget-session').hidden = !saved;
 }
 async function showWorkspace(result) {
+  $('welcome-panel').hidden = true; $('switch-account').hidden = false;
   const info = result.connection;
   notebooks = result.notebooks; notes = []; loadPins(info.server, info.account);
   document.body.classList.add('connected'); notebookId = ''; selectedShelf = ''; collapsedShelves.clear(); setView('notes');
@@ -418,10 +420,11 @@ async function showWorkspace(result) {
 async function restoreSession() {
   if (busy) return;
   setBusy(true);
-  try { await restoreAtStartup({ invoke, checking: showSessionChecking, connected: showWorkspace, login: showLogin, unavailable: showSessionUnavailable }); }
+  try { await restoreAtStartup({ invoke: async (command, args) => command === 'has_saved_session' && selectedAccount ? (await invoke('list_accounts')).some(a => a.server === selectedAccount.server && a.account === selectedAccount.account) : invoke(command, command === 'restore_session' ? selectedAccount || {} : args), checking: showSessionChecking, connected: showWorkspace, login: showLogin, unavailable: showSessionUnavailable }); }
   finally { setBusy(false); }
 }
 function showSessionChecking() {
+  $('welcome-panel').hidden = true;
   document.body.classList.remove('connected');
   $('login-panel').hidden = true; $('workspace').hidden = true; $('startup-panel').hidden = false;
   $('startup-panel').setAttribute('aria-busy', 'true'); $('startup-spinner').hidden = false;
@@ -432,6 +435,7 @@ function showSessionChecking() {
   status('Восстановление сессии…');
 }
 function showLogin(error) {
+  $('welcome-panel').hidden = true;
   document.body.classList.remove('connected');
   $('startup-panel').hidden = true; $('workspace').hidden = true; $('login-panel').hidden = false;
   $('connection').textContent = 'Не подключён';
@@ -467,13 +471,16 @@ async function signOut() {
   if (busy || !await noteEditor.leave()) return;
   setBusy(true); clearReader(); status('Выход из аккаунта…');
   try {
-    const result = await invoke('logout');
+    const result = selectedAccount && $('workspace').hidden
+      ? (await invoke('forget_account', selectedAccount), { notice: 'Сессия удалена с компьютера. На NAS она завершится по тайм-ауту.' })
+      : await invoke('logout');
     reset(); $('restore-session').hidden = true; $('forget-session').hidden = true;
-    status(result.notice || 'Вы вышли из аккаунта. Сохранённая сессия удалена.', !!result.notice);
+    await showAccounts();
+    status(result.notice || 'Вы вышли из аккаунта. Остальные сессии сохранены.', !!result.notice);
   } catch(error) {
     // Keep the workspace available when protected storage could not be cleared.
     status(`Не удалось завершить выход: ${error}`, true);
-    if ($('workspace').hidden) await updateSavedSessionControls();
+    if ($('workspace').hidden) showSessionUnavailable(String(error));
   } finally { setBusy(false); }
 }
 $('logout').addEventListener('click', signOut);
@@ -481,7 +488,44 @@ $('forget-session').addEventListener('click', signOut);
 $('restore-session').addEventListener('click', restoreSession);
 $('startup-retry').addEventListener('click', restoreSession);
 $('startup-logout').addEventListener('click', signOut);
-$('startup-login').addEventListener('click', () => { showLogin(); updateSavedSessionControls(); });
+$('startup-login').addEventListener('click', () => { showLogin(); });
+
+async function showAccounts() {
+  reset(); selectedAccount = null;
+  $('login-panel').hidden = true; $('welcome-panel').hidden = false;
+  $('account-list').replaceChildren(); $('accounts-empty').hidden = true;
+  status('Выберите пользователя или добавьте новый аккаунт.');
+  try {
+    const accounts = window.__TAURI__?.core?.invoke ? await invoke('list_accounts') : [];
+    $('accounts-empty').hidden = accounts.length > 0;
+    for (const info of accounts) {
+      const row = make('div', 'account-card'), open = make('button', 'account-open');
+      const details = make('span', 'account-details');
+      details.append(make('strong', '', info.account), make('span', '', info.server), make('small', '', info.mode === 'strict' ? 'Сессия сохранена · HTTPS' : info.mode === 'plain_http' ? 'HTTP · без шифрования' : 'HTTPS · сертификат не проверяется'));
+      open.append(make('span', 'user-avatar', info.account.slice(0,1).toUpperCase()), details, make('span', '', '→'));
+      open.addEventListener('click', () => { if (busy) return; selectedAccount = {server: info.server, account: info.account}; $('server').value = info.server; $('account').value = info.account; restoreSession(); });
+      const forget = make('button', '', 'Забыть');
+      forget.setAttribute('aria-label', `Забыть сессию ${info.account} на ${info.server}`);
+      forget.addEventListener('click', async () => {
+        if (busy) return; setBusy(true);
+        try { await invoke('forget_account', {server: info.server, account: info.account}); await showAccounts(); status('Сессия удалена с компьютера. На NAS она завершится по тайм-ауту.'); }
+        catch(error) { status(String(error), true); } finally { setBusy(false); }
+      });
+      row.append(open, forget); $('account-list').append(row);
+    }
+  } catch(error) { status(`Не удалось прочитать аккаунты: ${error}`, true); }
+}
+$('add-account').addEventListener('click', () => {
+  if (busy) return; selectedAccount = null; showLogin();
+  $('account').value = ''; $('password').value = ''; $('otp').value = ''; $('account').focus();
+});
+$('back-to-accounts').addEventListener('click', () => { if (!busy) showAccounts(); });
+$('startup-accounts').addEventListener('click', () => { if (!busy) showAccounts(); });
+$('switch-account').addEventListener('click', async () => {
+  if (busy || !await noteEditor.leave()) return; setBusy(true);
+  try { await invoke('switch_account'); await showAccounts(); }
+  catch(error) { status(String(error), true); } finally { setBusy(false); }
+});
 
 bindPanelResizing($('workspace'));
 $('toggle-notebooks').addEventListener('click', () => {
@@ -491,8 +535,7 @@ $('toggle-notebooks').addEventListener('click', () => {
   $('notebooks').hidden = !expanded;
 });
 
-if (window.__TAURI__?.core?.invoke) restoreSession();
-else showLogin();
+showAccounts();
 
 if (window.__TAURI__?.event?.listen) {
   window.__TAURI__.event.listen('request-close', async () => {

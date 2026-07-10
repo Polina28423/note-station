@@ -11,7 +11,7 @@ const MAGIC: &[u8] = b"NOTE-STATION-SESSION-1\0";
 const LIMIT: usize = 256 * 1024;
 
 // Never derive Debug: the record contains a bearer credential.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SavedSession {
     pub version: u8,
     pub server: String,
@@ -41,8 +41,26 @@ impl SessionStore {
     }
 
     pub fn save(&self, record: &SavedSession) -> Result<(), String> {
+        let mut records = self.load_all()?;
+        records.retain(|r| r.server != record.server || r.account != record.account);
+        records.push(record.clone());
+        self.write_records(&records)
+    }
+
+    pub fn remove(&self, server: &str, account: &str) -> Result<(), String> {
+        let mut records = self.load_all()?;
+        records.retain(|r| r.server != server || r.account != account);
+        if records.is_empty() {
+            self.clear()
+        } else {
+            self.write_records(&records)
+        }
+    }
+
+    fn write_records(&self, records: &[SavedSession]) -> Result<(), String> {
         let plaintext = Zeroizing::new(
-            serde_json::to_vec(record).map_err(|_| "Не удалось подготовить сессию.".to_string())?,
+            serde_json::to_vec(records)
+                .map_err(|_| "Не удалось подготовить сессию.".to_string())?,
         );
         if plaintext.len() > LIMIT {
             return Err("Слишком большой размер сохранённой сессии.".into());
@@ -65,9 +83,13 @@ impl SessionStore {
     }
 
     pub fn load(&self) -> Result<Option<SavedSession>, String> {
+        Ok(self.load_all()?.pop())
+    }
+
+    pub fn load_all(&self) -> Result<Vec<SavedSession>, String> {
         let file = match fs::File::open(&self.path) {
             Ok(file) => file,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(_) => return Err("Не удалось прочитать сохранённую сессию.".into()),
         };
         let mut bytes = Vec::new();
@@ -78,12 +100,26 @@ impl SessionStore {
             return Err("Сохранённая сессия повреждена. Удалите её и войдите заново.".into());
         }
         let plaintext = Zeroizing::new(unprotect(&bytes[MAGIC.len()..])?);
-        let record: SavedSession = serde_json::from_slice(&plaintext)
-            .map_err(|_| "Некорректная сохранённая сессия.".to_string())?;
-        if record.version != 1 || record.sid.is_empty() || record.sid.len() > 8192 {
+        // Accept the original single-account format without rewriting it on read.
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Records {
+            Many(Vec<SavedSession>),
+            Legacy(SavedSession),
+        }
+        let records = match serde_json::from_slice::<Records>(&plaintext)
+            .map_err(|_| "Некорректная сохранённая сессия.".to_string())?
+        {
+            Records::Many(records) => records,
+            Records::Legacy(record) => vec![record],
+        };
+        if records
+            .iter()
+            .any(|r| r.version != 1 || r.sid.is_empty() || r.sid.len() > 8192)
+        {
             return Err("Неподдерживаемая сохранённая сессия.".into());
         }
-        Ok(Some(record))
+        Ok(records)
     }
 
     pub fn clear(&self) -> Result<(), String> {
@@ -233,6 +269,34 @@ mod tests {
         store.clear().unwrap();
         fs::remove_dir(store.path.parent().unwrap()).unwrap();
     }
+    #[test]
+    fn accounts_are_independent_and_legacy_sessions_migrate() {
+        let store = store();
+        let first = record("first-token");
+        // Write the original encrypted single-session format.
+        fs::create_dir_all(store.path.parent().unwrap()).unwrap();
+        let mut bytes = MAGIC.to_vec();
+        bytes.extend(protect(&serde_json::to_vec(&first).unwrap()).unwrap());
+        fs::write(&store.path, bytes).unwrap();
+        assert_eq!(store.load_all().unwrap().len(), 1);
+        let mut second = record("second-token");
+        second.account = "second-user".into();
+        store.save(&second).unwrap();
+        let reopened = SessionStore::new(store.path.clone());
+        assert_eq!(reopened.load_all().unwrap().len(), 2);
+        second.sid = "renewed-token".into();
+        reopened.save(&second).unwrap();
+        let all = store.load_all().unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].sid, "first-token");
+        assert_eq!(all[1].sid, "renewed-token");
+        store.remove(&first.server, &first.account).unwrap();
+        assert_eq!(store.load().unwrap().unwrap().account, "second-user");
+        store.remove(&second.server, &second.account).unwrap();
+        assert!(!store.exists());
+        fs::remove_dir(store.path.parent().unwrap()).unwrap();
+    }
+
     #[test]
     fn corrupt_or_truncated_session_is_rejected_without_exposing_contents() {
         let store = store();

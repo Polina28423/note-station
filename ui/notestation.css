@@ -256,3 +256,15 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 .editor-controls button:disabled{opacity:.4;cursor:default}
 .editor-controls button:focus-visible{outline:2px solid #3799be;outline-offset:2px}
 .editor-controls .color-control{min-width:32px!important;padding-bottom:8px!important}
+
+#welcome-panel { width: min(620px, calc(100% - 48px)); margin: 40px auto; padding: 36px; box-sizing: border-box; background: white; border: 1px solid #dce4ec; border-radius: 18px; box-shadow: 0 16px 50px #273c5010; max-height: calc(100vh - 165px); overflow: auto; }
+.welcome-heading { text-align: center; margin-bottom: 28px; }
+.welcome-heading .login-app-icon { display: flex; margin: 0 auto 18px; }
+.welcome-heading h1 { font-size: 30px; margin: 10px 0; }
+#welcome-panel h2 { font-size: 15px; }
+.account-card { display: flex; align-items: center; gap: 8px; border: 1px solid #dce4ec; border-radius: 10px; margin: 10px 0; padding: 8px; }
+.account-open { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; padding: 12px; }
+.account-details { display: grid; gap: 5px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.account-details span, .account-details small { color: #64788a; }
+#add-account { width: 100%; margin: 14px 0; padding: 12px; }
+#back-to-accounts { margin-bottom: 20px; }

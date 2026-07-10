@@ -89,7 +89,7 @@ async fn login(
         };
         store(&app).and_then(|store| store.save(&record))
     } else {
-        store(&app).and_then(|store| store.clear())
+        store(&app).and_then(|store| store.remove(&connection.server, &connection.account))
     };
     // A previous identity must never be silently restored if saving the new one fails.
     let notice = match saved {
@@ -98,7 +98,9 @@ async fn login(
             None
         }
         Err(error) => {
-            if let Err(clear_error) = store(&app).and_then(|store| store.clear()) {
+            if let Err(clear_error) =
+                store(&app).and_then(|store| store.remove(&connection.server, &connection.account))
+            {
                 let _ = client.logout().await;
                 return Err(format!("{error} {clear_error}"));
             }
@@ -121,6 +123,8 @@ async fn login(
 async fn restore_session(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    server: Option<String>,
+    account: Option<String>,
 ) -> Result<Option<Connected>, String> {
     let mut guard = state.0.lock().await;
     if let Some(active) = guard.as_ref() {
@@ -131,7 +135,14 @@ async fn restore_session(
         }));
     }
     let store = store(&app)?;
-    let Some(record) = store.load()? else {
+    let record = match (server, account) {
+        (Some(server), Some(account)) => store
+            .load_all()?
+            .into_iter()
+            .find(|r| r.server == server && r.account == account),
+        _ => store.load()?,
+    };
+    let Some(record) = record else {
         return Ok(None);
     };
     // No password login: reuse the protected SID, then let the NAS validate it.
@@ -146,7 +157,7 @@ async fn restore_session(
         Ok(notebooks) => notebooks,
         Err(error) => {
             if expired_session(&error) {
-                store.clear()?;
+                store.remove(&record.server, &record.account)?;
                 return Err("Срок сессии истёк. Войдите снова.".into());
             }
             return Err(error); // Network/permission failures keep the protected record for retry.
@@ -189,7 +200,7 @@ async fn set_session_persistence(
             certificate_pem: active.certificate_pem.clone(),
         })?;
     } else {
-        store.clear()?;
+        store.remove(&active.connection.server, &active.connection.account)?;
     }
     active.connection.remembered = remember;
     Ok(active.connection.clone())
@@ -198,6 +209,49 @@ async fn set_session_persistence(
 #[tauri::command]
 fn has_saved_session(app: tauri::AppHandle) -> Result<bool, String> {
     Ok(store(&app)?.exists())
+}
+
+// Only public connection metadata crosses into the webview; SIDs stay in Rust.
+#[tauri::command]
+fn list_accounts(app: tauri::AppHandle) -> Result<Vec<ConnectionInfo>, String> {
+    Ok(store(&app)?
+        .load_all()?
+        .iter()
+        .map(|r| ConnectionInfo {
+            server: r.server.clone(),
+            account: r.account.clone(),
+            mode: r.mode,
+            remembered: true,
+        })
+        .collect())
+}
+
+#[tauri::command]
+async fn switch_account(state: State<'_, AppState>) -> Result<(), String> {
+    let mut guard = state.0.lock().await;
+    if let Some(active) = guard.take() {
+        if !active.connection.remembered {
+            let _ = active.client.logout().await;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn forget_account(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    server: String,
+    account: String,
+) -> Result<(), String> {
+    let guard = state.0.lock().await;
+    if guard
+        .as_ref()
+        .is_some_and(|a| a.connection.server == server && a.connection.account == account)
+    {
+        return Err("Сначала переключитесь с этого аккаунта.".into());
+    }
+    store(&app)?.remove(&server, &account)
 }
 
 #[tauri::command]
@@ -250,7 +304,9 @@ async fn logout(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Log
     let had_saved = store.exists();
     // If deletion fails, retain the active session so the UI can offer retry.
     // Once deletion succeeds, network failures cannot resurrect the local token.
-    store.clear()?;
+    if let Some(active) = guard.as_ref() {
+        store.remove(&active.connection.server, &active.connection.account)?;
+    }
     if let Some(active) = guard.take() {
         return match active.client.logout().await {
             Ok(()) => Ok(LogoutResult { server_revoked: true, notice: None }),
@@ -300,6 +356,9 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             login,
+            list_accounts,
+            switch_account,
+            forget_account,
             restore_session,
             set_session_persistence,
             has_saved_session,
