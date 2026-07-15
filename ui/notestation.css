@@ -267,4 +267,6 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 .account-details { display: grid; gap: 5px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .account-details span, .account-details small { color: #64788a; }
 #add-account { width: 100%; margin: 14px 0; padding: 12px; }
-#back-to-accounts { margin-bottom: 20px; }
+#login-form #back-to-accounts { display: block; width: fit-content; max-width: 100%; margin: 10px auto 0; padding: 6px 10px; border: 0; border-radius: 3px; background: transparent; color: #677e91; font-size: 12px; line-height: 1.5; box-shadow: none; }
+#login-form #back-to-accounts:hover:not(:disabled) { color: #0d91c2; background: #f0f7fb; }
+#login-form #back-to-accounts:disabled { opacity: .5; cursor: default; }
