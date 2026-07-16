@@ -6,7 +6,7 @@ mod synology;
 use serde::Serialize;
 use session_store::{expired_session, SavedSession, SessionStore};
 use std::sync::atomic::{AtomicBool, Ordering};
-use synology::{ConnectionMode, NasClient, Note, NoteSummary, Notebook, SavedNote};
+use synology::{ConnectionMode, NasClient, Note, NoteSummary, NoteVersion, Notebook, SavedNote};
 use tauri::{Emitter, Manager, State};
 use tokio::sync::Mutex;
 
@@ -280,6 +280,51 @@ async fn get_note(state: State<'_, AppState>, id: String) -> Result<Note, String
         .await
 }
 #[tauri::command]
+async fn list_note_versions(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<NoteVersion>, String> {
+    let guard = state.0.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .note_versions(&id)
+        .await
+}
+
+#[tauri::command]
+async fn get_note_version(
+    state: State<'_, AppState>,
+    id: String,
+    version: serde_json::Value,
+) -> Result<Note, String> {
+    let guard = state.0.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .note_version(&id, version)
+        .await
+}
+
+#[tauri::command]
+async fn restore_note_version(
+    state: State<'_, AppState>,
+    id: String,
+    version: serde_json::Value,
+    expected_version: serde_json::Value,
+) -> Result<SavedNote, String> {
+    let guard = state.0.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .restore_note_version(&id, version, expected_version)
+        .await
+}
+
+#[tauri::command]
 async fn save_note(
     state: State<'_, AppState>,
     id: String,
@@ -366,6 +411,9 @@ fn main() {
             list_notes,
             get_note,
             save_note,
+            list_note_versions,
+            get_note_version,
+            restore_note_version,
             register_close_guard,
             close_window,
             logout

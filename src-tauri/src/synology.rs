@@ -122,6 +122,46 @@ pub struct Note {
     pub encrypted: bool,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct NoteVersion {
+    pub ver: Value,
+    #[serde(default)]
+    pub mtime: Option<Value>,
+}
+
+fn validate_version(version: &Value) -> Result<(), String> {
+    if version.as_u64().is_some()
+        || version
+            .as_str()
+            .is_some_and(|v| !v.is_empty() && v.len() <= 1024)
+    {
+        Ok(())
+    } else {
+        Err("Некорректная версия заметки.".into())
+    }
+}
+
+fn parse_note_versions(data: Value) -> Result<Vec<NoteVersion>, String> {
+    let rows = data
+        .get("versions")
+        .and_then(Value::as_array)
+        .ok_or("Неизвестный формат истории версий NAS.")?;
+    if rows.len() > 1000
+        || data
+            .get("total")
+            .and_then(Value::as_u64)
+            .is_some_and(|total| total > rows.len() as u64)
+    {
+        return Err("История превышает доступный лимит 1000 версий или получена не полностью. Откройте историю в официальном клиенте.".into());
+    }
+    let versions: Vec<NoteVersion> = serde_json::from_value(json!(rows))
+        .map_err(|_| "Неизвестный формат версии заметки.".to_string())?;
+    for version in &versions {
+        validate_version(&version.ver)?;
+    }
+    Ok(versions)
+}
+
 #[derive(Serialize)]
 pub struct SavedNote {
     pub note: Note,
@@ -243,7 +283,7 @@ impl NasClient {
                     ("method".into(), "query".into()),
                     (
                         "query".into(),
-                        "SYNO.API.Auth,SYNO.NoteStation.Notebook,SYNO.NoteStation.Note".into(),
+                        "SYNO.API.Auth,SYNO.NoteStation.Notebook,SYNO.NoteStation.Note,SYNO.NoteStation.Note.Version".into(),
                     ),
                 ],
             )
@@ -417,17 +457,66 @@ impl NasClient {
             .map_err(|_| "Неизвестный формат заметок.".into())
     }
 
-    pub async fn note(&self, id: &str) -> Result<Note, String> {
+    pub async fn note_versions(&self, id: &str) -> Result<Vec<NoteVersion>, String> {
         if id.is_empty() || id.len() > 1024 {
             return Err("Некорректный ID заметки.".into());
         }
         let data = self
             .call(
-                "SYNO.NoteStation.Note",
-                "get",
-                vec![("object_id".into(), json!(id))],
+                "SYNO.NoteStation.Note.Version",
+                "list",
+                vec![
+                    ("object_id".into(), json!(id)),
+                    ("limit".into(), json!(1000)),
+                ],
             )
             .await?;
+        parse_note_versions(data)
+    }
+
+    pub async fn note_version(&self, id: &str, version: Value) -> Result<Note, String> {
+        validate_version(&version)?;
+        let note = self.read_note(id, Some(version.clone())).await?;
+        if note.ver.as_ref() != Some(&version) {
+            return Err("NAS вернул другую версию заметки. Восстановление отменено.".into());
+        }
+        if note.encrypted {
+            return Err("Просмотр зашифрованных версий пока не поддерживается.".into());
+        }
+        Ok(note)
+    }
+
+    pub async fn restore_note_version(
+        &self,
+        id: &str,
+        version: Value,
+        expected_version: Value,
+    ) -> Result<SavedNote, String> {
+        let historical = self.note_version(id, version).await?;
+        // Create a new revision through the conflict-checked write path. Never delete history.
+        self.save_note(
+            id,
+            expected_version,
+            historical.title,
+            historical.content,
+            String::new(),
+        )
+        .await
+    }
+
+    pub async fn note(&self, id: &str) -> Result<Note, String> {
+        self.read_note(id, None).await
+    }
+
+    async fn read_note(&self, id: &str, version: Option<Value>) -> Result<Note, String> {
+        if id.is_empty() || id.len() > 1024 {
+            return Err("Некорректный ID заметки.".into());
+        }
+        let mut params = vec![("object_id".into(), json!(id))];
+        if let Some(version) = version {
+            params.push(("ver".into(), version));
+        }
+        let data = self.call("SYNO.NoteStation.Note", "get", params).await?;
         let encrypted = data
             .get("encrypt")
             .is_some_and(|v| v == &json!(true) || v == &json!(1));
@@ -862,6 +951,7 @@ mod tests {
     fn save_fixture(
         conflict: bool,
         failed_readback: bool,
+        historical: bool,
     ) -> (String, std::thread::JoinHandle<()>) {
         use std::{
             io::{Read, Write},
@@ -872,7 +962,7 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
         let address = listener.local_addr().unwrap();
         let worker = thread::spawn(move || {
-            let count = if conflict { 1 } else { 3 };
+            let count = if conflict { 1 } else { 3 } + usize::from(historical);
             for index in 0..count {
                 let deadline = std::time::Instant::now() + Duration::from_secs(5);
                 let mut tcp = loop {
@@ -921,10 +1011,30 @@ mod tests {
                         .map(|(k, v)| (k.into_owned(), serde_json::from_str(&v).unwrap()))
                         .collect();
                 assert_eq!(fields["_sid"], "synthetic-save-token");
+                if historical && index == 0 {
+                    assert_eq!(fields["method"], "get");
+                    assert_eq!(fields["ver"], "v0");
+                    let body = json!({"success":true,"data":{"ver":"v0","title":"Новый заголовок","content":"<p>Старая версия</p><img data-file-id=\"existing\">"}}).to_string();
+                    write!(
+                        tcp,
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    )
+                    .unwrap();
+                    continue;
+                }
+                let index = index - usize::from(historical);
                 let data = if index == 1 {
                     assert_eq!(fields["method"], "set");
                     assert_eq!(fields["version"], 3);
                     assert_eq!(fields["ver"], "v1");
+                    if historical {
+                        assert!(fields["content"]
+                            .as_str()
+                            .unwrap()
+                            .contains("Старая версия"));
+                    }
                     assert_eq!(fields["check_conflict"], true);
                     assert_eq!(fields["title"], "Новый заголовок");
                     assert!(fields["content"].as_str().unwrap().contains("data-file-id"));
@@ -954,7 +1064,14 @@ mod tests {
         (format!("http://{address}"), worker)
     }
     fn run_save_case(conflict: bool, failed_readback: bool) -> Result<SavedNote, String> {
-        let (server, worker) = save_fixture(conflict, failed_readback);
+        run_save_or_restore_case(conflict, failed_readback, false)
+    }
+    fn run_save_or_restore_case(
+        conflict: bool,
+        failed_readback: bool,
+        historical: bool,
+    ) -> Result<SavedNote, String> {
+        let (server, worker) = save_fixture(conflict, failed_readback, historical);
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -977,6 +1094,11 @@ mod tests {
                 )]),
                 sid: Some("synthetic-save-token".into()),
             };
+            if historical {
+                return client
+                    .restore_note_version("note-a", json!("v0"), json!("v1"))
+                    .await;
+            }
             client
                 .save_note(
                     "note-a",
@@ -989,6 +1111,33 @@ mod tests {
         });
         worker.join().unwrap();
         result
+    }
+    #[test]
+    fn restores_historical_content_as_new_conflict_checked_revision() {
+        let result = run_save_or_restore_case(false, false, true).unwrap();
+        assert_eq!(result.note.ver, Some(json!("v2")));
+    }
+    #[test]
+    fn restore_rejects_concurrent_change_without_writing() {
+        assert!(run_save_or_restore_case(true, false, true)
+            .err()
+            .unwrap()
+            .contains("изменена на NAS"));
+    }
+    #[test]
+    fn history_rejects_malformed_or_incomplete_lists() {
+        assert!(parse_note_versions(json!({"versions":[{"ver":"v1"}],"total":2})).is_err());
+        assert!(parse_note_versions(json!({"versions":[{"ver":null}]})).is_err());
+        assert!(parse_note_versions(json!({"versions":[{"ver":{}}]})).is_err());
+        assert!(parse_note_versions(json!({"versions":[]}))
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            parse_note_versions(json!({"versions":[{"ver":1},{"ver":"v2"}]}))
+                .unwrap()
+                .len(),
+            2
+        );
     }
     #[test]
     fn saves_note_with_server_conflict_check_and_no_attachment_mutations() {

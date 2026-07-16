@@ -1,3 +1,4 @@
+import { bindNoteHistory } from './history.js';
 import { NoteEditor } from './editor.js';
 import { restoreAtStartup } from './startup.js';
 import { bindPanelResizing } from './panels.js';
@@ -27,6 +28,17 @@ const noteEditor = new NoteEditor({
   },
 });
 let currentNote = null, selectedAccount = null;
+bindNoteHistory({
+  invoke, getNote: () => currentNote, canOpen: () => !busy,
+  leave: () => noteEditor.leave(), setBusy,
+  onRestored: result => {
+    currentNote = result.note;
+    displayNote(result.note);
+    const summary = notes.find(n => n.object_id === result.note.object_id);
+    if (summary) { summary.title = result.note.title; summary.brief = htmlToText(result.note.content).slice(0, 300); summary.mtime = Math.floor(Date.now()/1000); }
+    renderNotes(); status(result.notice || 'Выбранная версия сохранена как новая. История сохранена.', !!result.notice);
+  },
+});
 const noteBody=$('note-content');
 let bodyPointer=false;
 function editableNote(){return currentNote&&!currentNote.encrypted&&currentNote.ver!=null&&!busy&&!noteEditor.active&&!noteEditor.opening;}
@@ -71,6 +83,7 @@ function displayNote(note) {
   if (note.encrypted) { $('note-content').textContent = 'Расшифровка пока не поддерживается. Откройте заметку в официальном клиенте.'; copyText = ''; }
   else { $('note-content').replaceChildren(safeNoteFragment(note.content)); copyText = htmlToText(note.content); }
   $('copy-note').disabled = note.encrypted;
+  $('note-history').disabled = note.encrypted;
 }
 const make = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -153,10 +166,12 @@ function status(message, error = false) {
 }
 function setBusy(value) {
   busy = value;
+  $('note-history').disabled = value || !currentNote || currentNote.encrypted;
   for (const id of ['switch-account', 'add-account', 'back-to-accounts', 'startup-accounts', 'connect', 'refresh', 'logout', 'session-state', 'certificate', 'clear-certificate', 'connection-mode', 'insecure-confirm', 'remember-session', 'restore-session', 'forget-session', 'startup-retry', 'startup-login', 'startup-logout', 'open-settings']) $(id).disabled = value;
 }
 function clearReader() {
   noteRequest++; selectedId = ''; copyText = ''; currentNote = null; noteEditor.close();
+  $('note-history').disabled = true;
   $('reader-empty').hidden = false; $('reader-document').hidden = true;
   $('note-title').textContent = ''; $('note-meta').textContent = '';
   $('note-content').replaceChildren(); $('copy-note').disabled = true;
@@ -305,6 +320,7 @@ async function openNote(id) {
   if (busy || !await noteEditor.leave()) return;
   const request = ++noteRequest;
   currentNote = null;
+  $('note-history').disabled = true;
   selectedId = id; copyText = ''; renderNotes();
   $('reader-empty').hidden = true; $('reader-document').hidden = false;
   $('note-title').textContent = 'Загрузка…'; $('note-content').replaceChildren(); $('copy-note').disabled = true;
@@ -539,7 +555,7 @@ showAccounts();
 
 if (window.__TAURI__?.event?.listen) {
   window.__TAURI__.event.listen('request-close', async () => {
-    if (await noteEditor.leave()) {
+    if (!busy && await noteEditor.leave()) {
       try { await invoke('close_window'); } catch(error) { status(String(error), true); }
     }
   }).then(() => invoke('register_close_guard')).catch(error => status(String(error), true));
