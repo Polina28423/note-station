@@ -6,7 +6,7 @@ module.exports=async function checkAppEditor(page,base){
   const openNote=async()=>{await page.locator('#notes .note-row').first().click();await page.waitForFunction(()=>document.getElementById('note-content').textContent.length>0);};
   const openBlocks=async()=>{await page.locator('#note-content p').first().click();await page.locator('#block-content .ce-paragraph').first().waitFor();};
   const settings=async mode=>{await page.locator('#open-settings').click();await page.locator('#editor-mode').selectOption(mode);await page.locator('#apply-settings').click();};
-  await page.goto(base+'/');await openNote();
+  await page.goto(base+'/');await page.locator('.account-open').first().click();await openNote();
   check(await page.locator('#edit-note').count()===0,'dedicated edit button is removed');
   await page.locator('#note-title').click();
   check(await page.locator('#note-editor').isHidden(),'clicking the note heading does not start editing');
@@ -57,7 +57,7 @@ module.exports=async function checkAppEditor(page,base){
   await page.locator('#cancel-edit').click();await page.locator('#note-editor').waitFor({state:'hidden'});
   await settings('classic');
   check(await page.evaluate(()=>localStorage.getItem('note-station.editor.v1'))==='classic','settings persist the classic editor preference');
-  await page.reload();await openNote();await page.locator('#note-content p').first().click();
+  await page.reload();await page.locator('.account-open').first().click();await openNote();await page.locator('#note-content p').first().click();
   await page.locator('#classic-surface iframe').waitFor();
   check(await page.locator('#classic-surface').isVisible(),'the saved editor preference is restored after reload');
 
