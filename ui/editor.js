@@ -1,3 +1,5 @@
+import { spellingStrings } from './strings.js';
+import { snapshotIsCurrent, selectionInSnapshot } from './spelling-adapter.js';
 import { htmlToText } from './content.js';
 import { ClassicSurface } from './classic-editor.js';
 import { BlockSurface } from './block-editor.js';
@@ -8,7 +10,7 @@ export class NoteEditor {
   constructor({save,onSaved,status,onBusy,mode='blocks'}) {
     Object.assign(this,{send:save,onSaved,status,onBusy});
     this.active=false;this.saving=false;this.preferredMode=['blocks','classic'].includes(mode)?mode:'blocks';this.mode=this.preferredMode;this.bodyDirty=false;this.saveSequence=0;
-    $('edit-title').addEventListener('input',()=>this.update());
+    $('edit-title').addEventListener('input',()=>{this.spellingRevision=(this.spellingRevision||0)+1;this.update();});
     $('save-note').addEventListener('click',()=>this.save());
     $('cancel-edit').addEventListener('click',()=>this.leave());
     $('editor-undo').addEventListener('click',()=>this.travel('undo'));
@@ -54,7 +56,7 @@ export class NoteEditor {
     window.addEventListener('beforeunload',e=>{if(this.dirty()||this.saving){e.preventDefault();e.returnValue='';}});
     window.addEventListener('keydown',e=>{
       if(!this.active)return;
-      if($('format-link-dialog').open||$('style-color-dialog').open){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s')e.preventDefault();return;}
+      if($('format-link-dialog').open||$('style-color-dialog').open||$('spelling-dialog')?.open){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s')e.preventDefault();return;}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();this.save();}
       if(this.mode==='blocks'&&(e.ctrlKey||e.metaKey)&&e.target.closest?.('#block-content')&&['z','y'].includes(e.key.toLowerCase())) {
         e.preventDefault();this.travel(e.key.toLowerCase()==='y'||e.shiftKey?'redo':'undo');
@@ -62,6 +64,7 @@ export class NoteEditor {
     });
   }
   change(error,changed) {
+    this.spellingRevision=(this.spellingRevision||0)+1;
     if(!this.active)return;
     if(error){$('save-error').textContent=String(error);this.bodyDirty=true;}
     else this.bodyDirty=this.mode==='classic'?this.surface.changed():changed===undefined?true:changed;
@@ -101,6 +104,7 @@ export class NoteEditor {
   update(){
     $('edit-state').textContent=this.saving?'Сохранение…':this.opening?'Открытие редактора…':this.dirty()?'Есть несохранённые изменения':'Нет изменений';
     const locked=this.saving||this.opening||this.historyBusy||this.checking;
+    const spellingButton=$('check-spelling');if(spellingButton)spellingButton.disabled=locked||!this.active||!this.surface?.spellingSnapshot;
     $('save-note').disabled=locked||!this.dirty();$('cancel-edit').disabled=locked;
     $('editor-undo').disabled=locked;$('editor-redo').disabled=locked;
     this.updateFormatting();
@@ -150,7 +154,35 @@ export class NoteEditor {
     this.linkSelection={surface:this.surface,range};$('format-link-url').value=link?.getAttribute('href') || '';$('format-link-error').textContent='';
     $('format-link-dialog').showModal();$('format-link-url').focus();
   }
+  spellingSnapshot(){
+    if(!this.active||this.saving||this.opening||this.historyBusy||this.checking||!this.surface?.spellingSnapshot)throw Error(spellingStrings.unsupported);
+    const body=this.surface.spellingSnapshot();
+    const input=$('edit-title'),title=input.value;
+    const selection=document.activeElement===input&&input.selectionEnd>input.selectionStart
+      ? {segment:'title',start:input.selectionStart,length:input.selectionEnd-input.selectionStart}
+      : selectionInSnapshot(body,this.surface.selectionRange?.());
+    return {selection,surface:this.surface,revision:this.spellingRevision||0,title,body,
+      segments:[{id:'title',text:title},...body.map(part=>({id:part.id,text:part.text}))]};
+  }
+  spellingCurrent(snapshot){
+    return this.active&&snapshot.surface===this.surface&&snapshot.revision===(this.spellingRevision||0)&&snapshot.title===$('edit-title').value&&snapshotIsCurrent(snapshot.body);
+  }
+  async replaceSpelling(snapshot,issue,replacement){
+    if(!this.spellingCurrent(snapshot)||this.saving||this.opening||this.historyBusy||this.checking)return false;
+    if(issue.segment==='title'){
+      const input=$('edit-title');
+      if(input.value.slice(issue.start,issue.start+issue.length)!==issue.word)return false;
+      input.focus({preventScroll:true});input.setSelectionRange(issue.start,issue.start+issue.length);
+      const changed=document.execCommand('insertText',false,replacement);
+      if(changed){this.spellingRevision=(this.spellingRevision||0)+1;this.update();}return changed;
+    }
+    this.checking=true;this.onBusy(true);this.update();
+    try{return await this.surface.replaceSpelling(snapshot.body,issue,replacement);}
+    finally{this.checking=false;this.onBusy(false);this.update();}
+  }
   close(){
+    if($('spelling-dialog')?.open)$('spelling-dialog').close();
+    this.spellingRevision=(this.spellingRevision||0)+1;
     if($('style-color-dialog').open)$('style-color-dialog').close();this.colorSelection=null;
     if($('format-link-dialog').open)$('format-link-dialog').close();this.linkSelection=null;
     this.active=false;this.surface?.destroy();this.surface=null;this.note=null;this.bodyDirty=false;

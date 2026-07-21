@@ -1,3 +1,4 @@
+import { captureTextRegions, spellingRange } from './spelling-adapter.js';
 import { focusContent } from './editor-focus.js';
 import { ALIGNMENTS, normalizeColor } from './editor-styles.js';
 const $ = id => document.getElementById(id);
@@ -60,6 +61,19 @@ export class ClassicSurface {
     this.editor.undoManager.clear(); this.baseline = this.editor.getContent();
   }
   changed() { return this.editor.getContent() !== this.baseline; }
+  spellingSnapshot(){
+    const body=this.editor.getBody();
+    // A single body region retains offsets across inline formatting and nested lists.
+    return captureTextRegions([body]);
+  }
+  async replaceSpelling(snapshot,issue,replacement){
+    const target=spellingRange(snapshot,issue);if(!target?.range)return false;
+    this.editor.undoManager.transact(()=>{
+      this.editor.selection.setRng(target.range);
+      this.editor.insertContent(this.editor.dom.encode(replacement));
+    });
+    this.update();return true;
+  }
   selectionRange(){return this.editor?.selection.getRng().cloneRange();}
   formatState(){
     const editor=this.editor,node=editor?.selection.getNode();

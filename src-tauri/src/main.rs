@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod session_store;
+mod spelling;
 mod synology;
 
 use serde::Serialize;
@@ -9,6 +10,60 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use synology::{ConnectionMode, NasClient, Note, NoteSummary, NoteVersion, Notebook, SavedNote};
 use tauri::{Emitter, Manager, State};
 use tokio::sync::Mutex;
+
+#[tauri::command]
+fn spelling_licenses() -> &'static str {
+    spelling::LICENSES
+}
+
+#[derive(Default)]
+struct SpellingState(std::sync::Arc<std::sync::Mutex<Option<spelling::SpellChecker>>>);
+
+#[tauri::command]
+async fn check_spelling(
+    state: State<'_, SpellingState>,
+    segments: Vec<spelling::TextSegment>,
+    language: spelling::Language,
+) -> Result<spelling::CheckResult, String> {
+    let shared = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = shared
+            .lock()
+            .map_err(|_| "Проверка орфографии недоступна.".to_string())?;
+        if guard.is_none() {
+            *guard = Some(spelling::SpellChecker::new()?);
+        }
+        guard
+            .as_ref()
+            .ok_or("Словари орфографии недоступны.")?
+            .check(&segments, language)
+    })
+    .await
+    .map_err(|_| "Не удалось завершить проверку орфографии.".to_string())?
+}
+
+#[tauri::command]
+async fn spelling_suggestions(
+    state: State<'_, SpellingState>,
+    word: String,
+    languages: Vec<spelling::Language>,
+) -> Result<Vec<String>, String> {
+    let shared = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = shared
+            .lock()
+            .map_err(|_| "Проверка орфографии недоступна.".to_string())?;
+        if guard.is_none() {
+            *guard = Some(spelling::SpellChecker::new()?);
+        }
+        guard
+            .as_ref()
+            .ok_or("Словари орфографии недоступны.")?
+            .suggestions(&word, &languages)
+    })
+    .await
+    .map_err(|_| "Не удалось получить варианты исправления.".to_string())?
+}
 
 #[derive(Clone, Serialize)]
 struct ConnectionInfo {
@@ -390,6 +445,7 @@ fn close_window(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(),
 fn main() {
     tauri::Builder::default()
         .manage(AppState::default())
+        .manage(SpellingState::default())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let state = window.state::<AppState>();
@@ -400,6 +456,9 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            spelling_licenses,
+            check_spelling,
+            spelling_suggestions,
             login,
             list_accounts,
             switch_account,

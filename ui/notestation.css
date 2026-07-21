@@ -278,3 +278,14 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 #history-list button[aria-pressed="true"]{outline:2px solid var(--accent,#467a68)}
 #history-preview{overflow-wrap:anywhere}
 @media(max-width:650px){.history-layout{grid-template-columns:1fr}}
+#spelling-dialog{width:min(920px,92vw);max-width:92vw}
+.spelling-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spelling-layout{display:grid;grid-template-columns:minmax(130px,200px) minmax(0,1fr);gap:20px;max-height:50vh;min-height:160px;overflow:auto}
+#spelling-issues{display:flex;flex-direction:column;gap:6px;overflow:auto}
+#spelling-issues button{text-align:left;overflow-wrap:anywhere}
+#spelling-issues button[aria-pressed="true"]{outline:2px solid var(--accent,#467a68)}
+#spelling-context{white-space:pre-wrap;overflow-wrap:anywhere}
+#spelling-suggestions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+@media(max-width:650px){.spelling-layout{grid-template-columns:1fr}}
+
+#spelling-license-text{white-space:pre-wrap;max-height:180px;overflow:auto;font-size:12px}

@@ -1,2 +1,5 @@
 * text=auto
 *.ps1 text eol=crlf
+
+# Retain upstream dictionary bytes and provenance hashes.
+src-tauri/dictionaries/** -text

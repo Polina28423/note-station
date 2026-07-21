@@ -1,3 +1,4 @@
+import { captureTextRegions, spellingRange } from './spelling-adapter.js';
 import { EditorDocument, documentSignature } from './editor-document.js';
 import { safeNoteFragment } from './content.js';
 import { focusContent, editableTarget } from './editor-focus.js';
@@ -151,6 +152,23 @@ export class BlockSurface {
     return {data,removed:this.document.missingProtected(data.blocks),changed:documentSignature(data.blocks)!==this.baseline};
   }
   output(data,removed){return this.document.serialize(data.blocks,removed);}
+  spellingSnapshot(){
+    const elements=[...$('block-content').querySelectorAll('[contenteditable="true"],textarea')]
+      .filter(element=>!element.closest('.preserved-fragment,.ce-code,pre,code') && !element.parentElement.closest('[contenteditable="true"]'));
+    return captureTextRegions(elements);
+  }
+  async replaceSpelling(snapshot,issue,replacement){
+    const target=spellingRange(snapshot,issue);if(!target)return false;
+    await this.capture();
+    if(!spellingRange(snapshot,issue))return false;
+    const element=target.region.element,doc=element.ownerDocument;
+    element.focus({preventScroll:true});
+    let changed;
+    if(target.range){const selection=doc.getSelection();selection.removeAllRanges();selection.addRange(target.range);changed=doc.execCommand('insertText',false,replacement);}
+    else {element.setSelectionRange(target.start,target.end);element.setRangeText(replacement,target.start,target.end,'end');element.dispatchEvent(new Event('input',{bubbles:true}));changed=true;}
+    if(changed){this.notify();await this.capture();}
+    return !!changed;
+  }
   selectionRange(){
     const selection=document.getSelection();if(!selection?.rangeCount)return null;
     const range=selection.getRangeAt(0);return this.validRange(range)?range.cloneRange():null;

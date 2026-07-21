@@ -33,3 +33,22 @@ Pinned versions and npm tarball integrity hashes are recorded in
 Build tooling esbuild and test tooling Playwright are development dependencies;
 they are not shipped in the app. TinyMCE remains available as the classic fallback,
 so its licensing requirements still apply to this distribution.
+
+## Встроенная проверка орфографии
+
+| Компонент | Версия / источник | Лицензия |
+| --- | --- | --- |
+| Spellbook | 0.4.2; https://github.com/helix-editor/spellbook | MPL-2.0 |
+| Русский словарь | Alexander I. Lebedev; `wooorm/dictionaries`, каталог `ru` | Условия BSD-подобной лицензии из `ru/license` |
+| Український словник | https://github.com/brown-uk/dict_uk; каталог `uk` | GPL-3.0 |
+| English (US) dictionary | SCOWL; каталог `en` | MIT AND BSD; полный состав уведомлений в `en/license` |
+
+Файлы словарей `.aff` и `.dic` включены без изменений из ревизии
+`8cfea406b505e4d7df52d5a19bce525df98c54ab` репозитория
+https://github.com/wooorm/dictionaries. Точные исходные URL и SHA-256 сохранены
+в `src-tauri/dictionaries/sources.json`. Исходные словари и тексты лицензий
+поставляются в этом репозитории. Тексты лицензий также встроены в приложение
+и доступны в панели орфографии, раздел «Словари и лицензии».
+
+Лицензия Spellbook сохранена в `src-tauri/dictionaries/spellbook-LICENSE`;
+исходники закреплённой версии доступны по ссылке на репозиторий и через Cargo.

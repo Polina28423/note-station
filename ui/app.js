@@ -1,3 +1,4 @@
+import { bindSpelling } from './spelling.js';
 import { bindNoteHistory } from './history.js';
 import { NoteEditor } from './editor.js';
 import { restoreAtStartup } from './startup.js';
@@ -27,6 +28,7 @@ const noteEditor = new NoteEditor({
     renderNotes(); status(result.notice || 'Заметка сохранена на NAS.', !!result.notice);
   },
 });
+bindSpelling({editor:noteEditor,invoke});
 let currentNote = null, selectedAccount = null;
 bindNoteHistory({
   invoke, getNote: () => currentNote, canOpen: () => !busy,
