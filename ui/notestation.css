@@ -190,7 +190,7 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 #startup-actions #startup-retry{background:#169fd0;color:white;border-color:#138dbb}
 @keyframes session-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.startup-spinner{animation:none}}
-.editor-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid #dde5ec;background:#fafcfd}
+.editor-controls{display:flex;align-items:center;gap:12px;flex-wrap:nowrap;padding:8px 16px;border-bottom:1px solid #dde5ec;background:#fafcfd}
 .editor-controls label{font-size:11px;color:#738696;margin:0}
 .editor-controls select{width:auto;max-width:230px;padding:5px 7px;font-size:12px;border:1px solid #ced9e3;border-radius:3px}
 .editor-controls button{padding:5px 8px;border:1px solid #d4dfe7;border-radius:3px;font-size:11px;color:#5f788b;background:#fff}
@@ -236,7 +236,10 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 #format-link-form{border:0;padding:0;box-shadow:none;border-radius:0}
 #format-link-title{font-size:18px;margin:0 0 16px}
 #format-link-error{min-height:18px;color:#b35745;font-size:12px;line-height:1.5}
-.formatting-toolbar{flex-wrap:wrap;max-width:100%;border-right:0;flex:1 1 100%}
+.editor-controls-left{display:flex;align-items:center;gap:12px;min-width:0;overflow-x:auto;flex:0 1 auto;padding:3px}
+.editor-history{display:flex;align-items:center;gap:3px;flex-shrink:0;padding-right:12px;border-right:1px solid #d7e1e8}
+.editor-controls-right{display:flex;align-items:center;flex-shrink:0;margin-left:auto;padding:3px}
+.formatting-toolbar{flex-wrap:nowrap;max-width:none;border-right:0;padding-right:0;flex:0 0 auto}
 .alignment-buttons{display:inline-flex;gap:3px;margin-left:3px;padding-left:7px;border-left:1px solid #d7e1e8}
 .color-control{position:relative;padding-bottom:8px!important;min-width:38px!important}
 .color-indicator{position:absolute;left:6px;right:6px;bottom:3px;height:3px;background:var(--selected-color);border:1px solid #00000012}
