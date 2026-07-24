@@ -1,10 +1,10 @@
-import { spellingStrings } from './strings.js';
+import { spellingStrings, typographyStrings } from './strings.js';
 import { snapshotIsCurrent, selectionInSnapshot } from './spelling-adapter.js';
 import { htmlToText } from './content.js';
 import { ClassicSurface } from './classic-editor.js';
 import { BlockSurface } from './block-editor.js';
 import { safeLink } from './editor-document.js';
-import { ALIGNMENTS, normalizeColor } from './editor-styles.js';
+import { ALIGNMENTS, normalizeColor, FONT_FAMILIES, FONT_SIZES, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 const $ = id => document.getElementById(id);
 export class NoteEditor {
   constructor({save,onSaved,status,onBusy,mode='blocks'}) {
@@ -26,6 +26,13 @@ export class NoteEditor {
       else if(button.dataset.align)this.align(button.dataset.align);
       else if(button.dataset.format)this.format(button.dataset.format);
     });
+    for(const [id,property,values] of [['format-font-family','font-family',FONT_FAMILIES],['format-font-size','font-size',FONT_SIZES.map(size=>`${size}pt`)]]){
+      const select=$(id);if(!select)continue;
+      for(const value of values){const option=document.createElement('option');option.value=value;option.textContent=property==='font-size'?value.replace('pt',''):value;select.append(option);}
+      const remember=()=>{const range=this.surface?.selectionRange();this.typographySelection=range&&!range.collapsed?{surface:this.surface,range}:this.lastTextSelection;};
+      select.addEventListener('pointerdown',remember);select.addEventListener('focus',remember);
+      select.addEventListener('change',()=>this.applyTypography(property,select.value));
+    }
     document.addEventListener('selectionchange',()=>this.updateFormatting());
     document.addEventListener('focusin',()=>this.updateFormatting());
     const palette=$('style-color-palette');
@@ -111,14 +118,29 @@ export class NoteEditor {
   }
   updateFormatting(){
     let state={};try{if(this.active)state=this.surface?.formatState() || {};}catch{}
+    if(this.active&&state.available&&!document.activeElement?.closest('#editor-formatting')){const range=this.surface?.selectionRange();this.lastTextSelection=range&&!range.collapsed?{surface:this.surface,range}:null;}
     const locked=!this.active||this.saving||this.opening||this.historyBusy||this.checking||!state.available;
     for(const button of $('editor-formatting').querySelectorAll('button')) {
       button.disabled=!!locked;
       if(['bold','italic','underline','strikeThrough'].includes(button.dataset.format))button.setAttribute('aria-pressed',String(!!state[button.dataset.format]));
       if(button.dataset.align)button.setAttribute('aria-pressed',String(state.alignment===button.dataset.align));
     }
+    for(const [id,value] of [['format-font-family',normalizeFontFamily(state.fontFamily)?.split(',')[0]],['format-font-size',normalizeFontSize(state.fontSize)]]){
+      const select=$(id);if(!select)continue;
+      select.disabled=!!locked;
+      if(document.activeElement!==select)select.value=[...select.options].some(option=>option.value===value)?value:'';
+    }
     $('format-text-color').style.setProperty('--selected-color',normalizeColor(state.color) || '#505a64');
     $('format-background').style.setProperty('--selected-color',normalizeColor(state.background) || '#fff2a8');
+  }
+  async applyTypography(property,value){
+    if(!this.active||this.saving||this.opening||this.historyBusy||this.checking)return;
+    const saved=this.typographySelection;
+    if(!saved||saved.surface!==this.surface||!saved.range||saved.range.collapsed){this.status(typographyStrings.selectText,true);return;}
+    this.checking=true;this.onBusy(true);this.update();
+    try{if(await this.surface.typography(property,value,saved.range))this.change();}
+    catch(error){$('save-error').textContent=String(error);}
+    finally{this.checking=false;this.onBusy(false);this.update();}
   }
   format(command,value,range){
     if(!this.active||this.saving||this.opening||this.historyBusy||this.checking)return;

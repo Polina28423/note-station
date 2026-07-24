@@ -2,7 +2,7 @@ import { captureTextRegions, spellingRange } from './spelling-adapter.js';
 import { EditorDocument, documentSignature } from './editor-document.js';
 import { safeNoteFragment } from './content.js';
 import { focusContent, editableTarget } from './editor-focus.js';
-import { ALIGNMENTS, normalizeColor } from './editor-styles.js';
+import { ALIGNMENTS, normalizeColor, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 
 const INLINE_RULES={b:true,strong:true,i:true,em:true,u:true,s:true,strike:true,del:true,a:{href:true,title:true},br:true,code:true,mark:{style:true},span:{style:true},font:{color:true}};
 const $=id=>document.getElementById(id);
@@ -186,7 +186,7 @@ export class BlockSurface {
     const toolbarFocus=focus?.closest('#editor-formatting,.ce-inline-toolbar')&&!['INPUT','TEXTAREA'].includes(focus.tagName);
     const available=!!(this.ready&&range&&(toolbarFocus||($('block-content').contains(focus)&&matchingEditable&&!['INPUT','TEXTAREA'].includes(focus.tagName))));
     const block=rangeNode?this.editor.blocks.getBlockByElement(rangeNode):null;
-    return {available,bold:available&&document.queryCommandState('bold'),italic:available&&document.queryCommandState('italic'),underline:available&&document.queryCommandState('underline'),strikeThrough:available&&document.queryCommandState('strikeThrough'),alignment:available&&this.alignments.get(block?.id)?.alignment,color:available&&normalizeColor(document.queryCommandValue('foreColor')),background:available&&normalizeColor(document.queryCommandValue('hiliteColor'))};
+    return {available,bold:available&&document.queryCommandState('bold'),italic:available&&document.queryCommandState('italic'),underline:available&&document.queryCommandState('underline'),strikeThrough:available&&document.queryCommandState('strikeThrough'),alignment:available&&this.alignments.get(block?.id)?.alignment,color:available&&normalizeColor(document.queryCommandValue('foreColor')),background:available&&normalizeColor(document.queryCommandValue('hiliteColor')),fontFamily:available&&getComputedStyle(rangeNode).fontFamily,fontSize:available&&getComputedStyle(rangeNode).fontSize};
   }
   format(command,value,range=this.selectionRange()){
     if(!['bold','italic','underline','strikeThrough','removeFormat','createLink','unlink','foreColor','hiliteColor'].includes(command)||!this.validRange(range))return false;
@@ -200,6 +200,23 @@ export class BlockSurface {
     finally{if(color)document.execCommand('styleWithCSS',false,css);}
     if(!changed)return false;
     this.notify();this.scheduleHistory();return true;
+  }
+  async typography(property,value,range=this.selectionRange()){
+    const clean=property==='font-family'?normalizeFontFamily(value):property==='font-size'?normalizeFontSize(value):'';
+    if(!clean||!this.validRange(range)||range.collapsed)return false;
+    await this.capture();
+    if(!this.validRange(range))return false;
+    const element=(range.startContainer.nodeType===1?range.startContainer:range.startContainer.parentElement).closest('[contenteditable="true"]');
+    element.focus({preventScroll:true});
+    const fragment=range.extractContents();
+    for(const node of fragment.querySelectorAll('[style],font')){
+      node.style.removeProperty(property);
+      if(node.tagName==='FONT')node.removeAttribute(property==='font-family'?'face':'size');
+      if(!node.getAttribute('style'))node.removeAttribute('style');
+    }
+    const span=document.createElement('span');span.style.setProperty(property,clean);span.append(fragment);range.insertNode(span);
+    range.selectNodeContents(span);const selection=document.getSelection();selection.removeAllRanges();selection.addRange(range);
+    element.dispatchEvent(new Event('input',{bubbles:true}));this.notify();await this.capture();return true;
   }
   align(alignment){
     const range=this.selectionRange();if(!this.validRange(range)||!ALIGNMENTS.includes(alignment))return false;

@@ -1,6 +1,6 @@
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
 import { focusContent } from './editor-focus.js';
-import { ALIGNMENTS, normalizeColor } from './editor-styles.js';
+import { ALIGNMENTS, normalizeColor, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 const $ = id => document.getElementById(id);
 export class ClassicSurface {
   constructor(onChange,onSelection=()=>{}) { this.update = onChange; this.selectionChanged=onSelection; this.editor = null; }
@@ -80,7 +80,7 @@ export class ClassicSurface {
     const available=!!(editor&&node&&editor.getBody().contains(node)&&!node.closest?.('.mceNonEditable')&&(document.activeElement?.closest('#classic-surface,#editor-formatting')));
     const styles=available?editor.getWin().getComputedStyle(node):null;
     const alignment={start:'left',end:'right'}[styles?.textAlign] || styles?.textAlign;
-    return {available,bold:available&&editor.formatter.match('bold'),italic:available&&editor.formatter.match('italic'),underline:available&&editor.formatter.match('underline'),strikeThrough:available&&editor.formatter.match('strikethrough'),alignment,color:normalizeColor(styles?.color),background:normalizeColor(styles?.backgroundColor)};
+    return {available,bold:available&&editor.formatter.match('bold'),italic:available&&editor.formatter.match('italic'),underline:available&&editor.formatter.match('underline'),strikeThrough:available&&editor.formatter.match('strikethrough'),alignment,color:normalizeColor(styles?.color),background:normalizeColor(styles?.backgroundColor),fontFamily:styles?.fontFamily,fontSize:styles?.fontSize};
   }
   format(command,value,range=this.selectionRange()){
     const commands={bold:'Bold',italic:'Italic',underline:'Underline',strikeThrough:'Strikethrough',removeFormat:'RemoveFormat',createLink:'mceInsertLink',unlink:'Unlink',foreColor:'ForeColor',hiliteColor:'HiliteColor'};
@@ -88,6 +88,13 @@ export class ClassicSurface {
     this.editor.focus();this.editor.selection.setRng(range);
     if(['foreColor','hiliteColor'].includes(command)&&!normalizeColor(value))return false;
     this.editor.undoManager.transact(()=>this.editor.execCommand(commands[command],false,command==='createLink'?{href:value}:['foreColor','hiliteColor'].includes(command)?normalizeColor(value):undefined));
+    this.update();return true;
+  }
+  async typography(property,value,range=this.selectionRange()){
+    const clean=property==='font-family'?normalizeFontFamily(value):property==='font-size'?normalizeFontSize(value):'';
+    if(!clean||!range||range.collapsed||!this.editor.getBody().contains(range.startContainer)||!this.editor.getBody().contains(range.endContainer))return false;
+    this.editor.focus();this.editor.selection.setRng(range);
+    this.editor.undoManager.transact(()=>this.editor.execCommand(property==='font-family'?'FontName':'FontSize',false,clean));
     this.update();return true;
   }
   align(alignment){if(!ALIGNMENTS.includes(alignment)||!this.formatState().available)return false;this.editor.execCommand({left:'JustifyLeft',center:'JustifyCenter',right:'JustifyRight',justify:'JustifyFull'}[alignment]);this.update();return true;}

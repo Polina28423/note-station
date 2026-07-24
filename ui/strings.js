@@ -24,3 +24,5 @@ export const spellingStrings = Object.freeze({
   replace: value => `Заменить на «${value}»`,
   failed: 'Не удалось применить исправление. Запустите проверку заново.',
 });
+
+export const typographyStrings = Object.freeze({ selectText: 'Выделите текст, чтобы изменить шрифт или размер.' });

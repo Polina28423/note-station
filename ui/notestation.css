@@ -292,3 +292,7 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 @media(max-width:650px){.spelling-layout{grid-template-columns:1fr}}
 
 #spelling-license-text{white-space:pre-wrap;max-height:180px;overflow:auto;font-size:12px}
+
+.editor-controls #format-font-family{width:150px;max-width:150px;flex-shrink:0;height:30px}
+.editor-controls #format-font-size{width:76px;max-width:76px;flex-shrink:0;height:30px;margin-right:8px}
+.editor-controls select:focus-visible{outline:2px solid #3799be;outline-offset:2px}
