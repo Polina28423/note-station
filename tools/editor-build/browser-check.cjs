@@ -39,6 +39,7 @@ async function main(){
     console.log(`Application settings and auto-edit: ${appChecks.length} checks passed.`);
     await require(path.join(root,'tests/history-check.cjs'))(page,`http://127.0.0.1:${port}`);
     await require(path.join(root,'tests/spelling-check.cjs'))(page,`http://127.0.0.1:${port}`);
+    await require(path.join(root,'tests/typography-check.cjs'))(page,`http://127.0.0.1:${port}`);
     if(errors.length){console.error(errors);process.exitCode=1;}
   } finally {await browser?.close();server.kill();}
 }

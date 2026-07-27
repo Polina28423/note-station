@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EditorDocument, cleanInline, renderBlock } from '../ui/editor-document.js';
-import { normalizeColor, safeStyles } from '../ui/editor-styles.js';
+import { normalizeColor, safeStyles, normalizeFontFamily, normalizeFontSize } from '../ui/editor-styles.js';
 const load = html => { const doc=new EditorDocument(html);doc.bindBaseline(doc.blocks);return doc; };
 const clone = value => structuredClone(value);
 
@@ -62,7 +62,7 @@ test('new inline HTML removes scripts, event handlers and unsafe URLs',()=>{
   assert.equal(cleanInline('<a href="https://example.org" title="A">Link</a>'),'<a href="https://example.org" title="A">Link</a>');
 });
 test('special inline attributes remain protected on import',()=>{
-  const doc=load('<p><a href="javascript:bad()">A</a></p><p><span style="font-family:serif;color:red">B</span></p>');
+  const doc=load('<p><a href="javascript:bad()">A</a></p><p><span style="font-family:UnknownCustomFont;color:red">B</span></p>');
   assert.deepEqual(doc.blocks.map(b=>b.type),['preserved','preserved']);
 });
 test('code contents are escaped when edited',()=>{
@@ -120,4 +120,17 @@ test('text and background colors remain editable and survive changed HTML',()=>{
   assert.equal(load(html).blocks[0].type,'paragraph');
   const clean=cleanInline('<span style="color:#123456;background-color:yellow;background-image:url(https://bad.invalid);position:fixed">Safe</span>');
   assert.equal(clean,'<span style="color:#123456;background-color:#ffff00">Safe</span>');
+});
+
+test('font styles reject CSS injection and preserve safe family and point sizes',()=>{
+  assert.equal(normalizeFontFamily('"Times New Roman", serif'),'Times New Roman,serif');
+  assert.equal(normalizeFontSize('32px'),'24pt');
+  for(const value of ['url(https://bad.invalid)','Arial;position:fixed','UnknownFont','Arial" onmouseover="bad'])assert.equal(normalizeFontFamily(value),'');
+  for(const value of ['0pt','999px','calc(12pt)','12em','url(x)','14'])assert.equal(normalizeFontSize(value),'');
+  assert.equal(cleanInline('<span style="font-family:Georgia;font-size:24pt">Text</span>'),'<span style="font-family:Georgia;font-size:24pt">Text</span>');
+  for(const type of ['paragraph','header','quote','list','table']){
+    const html='<span style="font-family:Georgia;font-size:24pt">Text</span>';
+    const data={paragraph:{text:html},header:{text:html,level:2},quote:{text:html,caption:'',alignment:'left'},list:{style:'unordered',meta:{},items:[{content:html,meta:{},items:[]}]},table:{content:[[html]],withHeadings:false}}[type];
+    assert.match(renderBlock({type,data}),/font-family:Georgia;font-size:24pt/);
+  }
 });

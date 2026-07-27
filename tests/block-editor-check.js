@@ -11,7 +11,7 @@ const editor=new NoteEditor({
   save:async args=>{sent.push(args);if(slow)await delay(100);if(fail)throw Error('Fixture: offline');return {note:{object_id:args.id,ver:'v2',content:args.content,title:args.title,encrypted:false},notice:null};},
   onSaved:result=>{saved=result.note;},status:()=>{},onBusy:()=>{}
 });
-const html='<h2>Title</h2><p>First <b>bold</b> text</p><ul><li>One<ul><li>Nested</li></ul></li></ul><table><tr><th>A</th></tr><tr><td>B</td></tr></table><p style="text-align:center;font-family:serif">Special layout</p><img src="relative.png" file_id="legacy"><embed src="document.pdf">';
+const html='<h2>Title</h2><p>First <b>bold</b> text</p><ul><li>One<ul><li>Nested</li></ul></li></ul><table><tr><th>A</th></tr><tr><td>B</td></tr></table><p style="text-align:center;font-family:UnknownCustomFont">Special layout</p><img src="relative.png" file_id="legacy"><embed src="document.pdf">';
 const note={object_id:'fixture',ver:'v1',title:'Fixture',content:html,encrypted:false};
 const title=()=>document.getElementById('edit-title');
 const bodyInput=(value)=>{const p=document.querySelector('#block-content .ce-paragraph');p.textContent=value;p.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText'}));};
@@ -34,7 +34,7 @@ try {
   check(await save,'immediate Ctrl+S path succeeds');
   check(sent.at(-1).content.includes('<p>Latest immediate edit</p>'),'latest keystroke reaches saved HTML');
   check(sent.at(-1).content.includes('<img src="relative.png" file_id="legacy">')&&sent.at(-1).content.includes('<embed src="document.pdf">'),'original media attributes and relative URLs survive other block edits');
-  check(sent.at(-1).content.includes('<p style="text-align:center;font-family:serif">Special layout</p>'),'unrelated styled HTML remains exact');
+  check(sent.at(-1).content.includes('<p style="text-align:center;font-family:UnknownCustomFont">Special layout</p>'),'unrelated styled HTML remains exact');
   check(!sent.at(-1).content.includes('data-note-protected')&&!sent.at(-1).content.includes('preserved-fragment'),'editor implementation markers are never sent to NAS');
 
   await editor.start(note);
