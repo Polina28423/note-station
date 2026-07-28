@@ -124,6 +124,7 @@ pub struct Note {
 
 #[derive(Serialize, Deserialize)]
 pub struct NoteVersion {
+    #[serde(alias = "version")]
     pub ver: Value,
     #[serde(default)]
     pub mtime: Option<Value>,
@@ -962,7 +963,7 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
         let address = listener.local_addr().unwrap();
         let worker = thread::spawn(move || {
-            let count = if conflict { 1 } else { 3 } + usize::from(historical);
+            let count = if conflict { 1 } else { 3 } + 2 * usize::from(historical);
             for index in 0..count {
                 let deadline = std::time::Instant::now() + Duration::from_secs(5);
                 let mut tcp = loop {
@@ -1012,6 +1013,27 @@ mod tests {
                         .collect();
                 assert_eq!(fields["_sid"], "synthetic-save-token");
                 if historical && index == 0 {
+                    assert_eq!(fields["api"], "SYNO.NoteStation.Note.Version");
+                    assert_eq!(fields["method"], "list");
+                    assert_eq!(fields["version"], 2);
+                    assert_eq!(fields["object_id"], "note-a");
+                    let body = json!({"success":true,"data":{"total":1,"versions":[{
+                        "id":"history-row-id", "author":"fixture-author", "version":"v0",
+                        "mtime":1700000000, "commit_msg":{"device":"desktop","listable":true},
+                        "last_version":false
+                    }]}})
+                    .to_string();
+                    write!(
+                        tcp,
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    )
+                    .unwrap();
+                    continue;
+                }
+                if historical && index == 1 {
+                    assert_eq!(fields["api"], "SYNO.NoteStation.Note");
                     assert_eq!(fields["method"], "get");
                     assert_eq!(fields["ver"], "v0");
                     let body = json!({"success":true,"data":{"ver":"v0","title":"Новый заголовок","content":"<p>Старая версия</p><img data-file-id=\"existing\">"}}).to_string();
@@ -1024,7 +1046,7 @@ mod tests {
                     .unwrap();
                     continue;
                 }
-                let index = index - usize::from(historical);
+                let index = index - 2 * usize::from(historical);
                 let data = if index == 1 {
                     assert_eq!(fields["method"], "set");
                     assert_eq!(fields["version"], 3);
@@ -1084,19 +1106,32 @@ mod tests {
                     .build()
                     .unwrap(),
                 base: normalize_server_for_mode(&server, ConnectionMode::PlainHttp).unwrap(),
-                apis: HashMap::from([(
-                    "SYNO.NoteStation.Note".into(),
-                    ApiInfo {
-                        path: "entry.cgi".into(),
-                        min_version: 1,
-                        max_version: 3,
-                    },
-                )]),
+                apis: HashMap::from([
+                    (
+                        "SYNO.NoteStation.Note".into(),
+                        ApiInfo {
+                            path: "entry.cgi".into(),
+                            min_version: 1,
+                            max_version: 3,
+                        },
+                    ),
+                    (
+                        "SYNO.NoteStation.Note.Version".into(),
+                        ApiInfo {
+                            path: "entry.cgi".into(),
+                            min_version: 1,
+                            max_version: 2,
+                        },
+                    ),
+                ]),
                 sid: Some("synthetic-save-token".into()),
             };
             if historical {
+                let versions = client.note_versions("note-a").await?;
+                assert_eq!(versions.len(), 1);
+                assert_eq!(versions[0].ver, json!("v0"));
                 return client
-                    .restore_note_version("note-a", json!("v0"), json!("v1"))
+                    .restore_note_version("note-a", versions[0].ver.clone(), json!("v1"))
                     .await;
             }
             client
@@ -1123,6 +1158,30 @@ mod tests {
             .err()
             .unwrap()
             .contains("изменена на NAS"));
+    }
+    #[test]
+    fn history_normalizes_documented_version_field_without_using_row_id() {
+        let versions = parse_note_versions(json!({"total":2,"versions":[
+            {"id":"row-a","author":"fixture","version":17,"mtime":1700000000,"commit_msg":{"device":"desktop"},"last_version":false},
+            {"id":"row-b","version":"18","mtime":null,"last_version":true}
+        ]})).unwrap();
+        assert_eq!(versions[0].ver, json!(17));
+        assert_eq!(versions[1].ver, json!("18"));
+        assert_eq!(versions[0].mtime, Some(json!(1700000000)));
+        assert_eq!(
+            serde_json::to_value(&versions[0]).unwrap(),
+            json!({"ver":17,"mtime":1700000000})
+        );
+        for row in [
+            json!({"id":"row-only"}),
+            json!({"version":null}),
+            json!({"version":{}}),
+            json!({"version":""}),
+            json!({"version":true}),
+            json!({"ver":17,"version":18}),
+        ] {
+            assert!(parse_note_versions(json!({"versions":[row]})).is_err());
+        }
     }
     #[test]
     fn history_rejects_malformed_or_incomplete_lists() {
