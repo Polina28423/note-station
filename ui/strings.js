@@ -26,3 +26,11 @@ export const spellingStrings = Object.freeze({
 });
 
 export const typographyStrings = Object.freeze({ selectText: 'Выделите текст, чтобы изменить шрифт или размер.' });
+
+export const linkStrings = Object.freeze({
+  invalid: 'Укажите адрес сайта http:// или https:// без пробелов, имени пользователя и пароля.',
+  openFailed: 'Не удалось открыть сайт в системном браузере. Проверьте браузер по умолчанию в Windows.',
+  unavailable: 'Открытие ссылок недоступно.',
+  stale: 'Текст изменился. Откройте окно ссылки заново.',
+  openHint: 'Открыть сайт в браузере',
+});

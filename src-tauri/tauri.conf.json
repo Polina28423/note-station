@@ -11,6 +11,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "Note Station Rust",
         "width": 1240,
         "height": 800,

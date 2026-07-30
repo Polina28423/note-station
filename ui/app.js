@@ -1,3 +1,4 @@
+import { bindExternalLinks } from './links.js';
 import { bindSpelling } from './spelling.js';
 import { bindNoteHistory } from './history.js';
 import { NoteEditor } from './editor.js';
@@ -19,6 +20,7 @@ let preferredEditor='blocks';
 try { preferredEditor=loadEditorMode(localStorage); } catch {}
 const noteEditor = new NoteEditor({
   mode: preferredEditor,
+  openExternal: url => invoke('open_external_url',{url}),
   save: args => invoke('save_note', args), status, onBusy: setBusy,
   onSaved: result => {
     currentNote = result.note;
@@ -42,6 +44,8 @@ bindNoteHistory({
   },
 });
 const noteBody=$('note-content');
+bindExternalLinks(noteBody,url=>invoke('open_external_url',{url}),status);
+bindExternalLinks($('history-preview'),url=>invoke('open_external_url',{url}),message=>{$('history-status').textContent=message;});
 let bodyPointer=false;
 function editableNote(){return currentNote&&!currentNote.encrypted&&currentNote.ver!=null&&!busy&&!noteEditor.active&&!noteEditor.opening;}
 function bodyAnchor(event) {
@@ -58,11 +62,11 @@ document.addEventListener('pointerup',()=>{setTimeout(()=>{bodyPointer=false;},0
 noteBody.addEventListener('pointercancel',()=>{bodyPointer=false;});
 noteBody.addEventListener('click',event=>{
   bodyPointer=false;
-  if(!editableNote()||window.getSelection()?.toString())return;
+  if(event.target.closest?.('a')||!editableNote()||window.getSelection()?.toString())return;
   noteEditor.start(currentNote,{focusBody:true,anchor:bodyAnchor(event)});
 });
 noteBody.addEventListener('focus',()=>{if(!bodyPointer&&editableNote())noteEditor.start(currentNote,{focusBody:true});});
-noteBody.addEventListener('keydown',event=>{if((event.key==='Enter'||event.key==='F2')&&editableNote()){event.preventDefault();noteEditor.start(currentNote,{focusBody:true});}});
+noteBody.addEventListener('keydown',event=>{if(event.target.closest?.('a'))return;if((event.key==='Enter'||event.key==='F2')&&editableNote()){event.preventDefault();noteEditor.start(currentNote,{focusBody:true});}});
 $('open-settings').addEventListener('click',()=>{
   if(busy)return;$('editor-mode').value=preferredEditor;$('app-settings').showModal();
 });

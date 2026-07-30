@@ -1,9 +1,10 @@
+import { bindExternalLinks, updateLink } from './links.js';
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
 import { focusContent } from './editor-focus.js';
 import { ALIGNMENTS, normalizeColor, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 const $ = id => document.getElementById(id);
 export class ClassicSurface {
-  constructor(onChange,onSelection=()=>{}) { this.update = onChange; this.selectionChanged=onSelection; this.editor = null; }
+  constructor(onChange,onSelection=()=>{},onOpenLink=()=>{},onLinkError=()=>{},onEditLink=()=>{}) { this.editLink=onEditLink;this.openExternal=onOpenLink;this.linkError=onLinkError;this.update = onChange; this.selectionChanged=onSelection; this.editor = null; }
   async init() {
     if (this.editor) return;
     if (!window.tinymce || !window.DOMPurify) throw Error('Не удалось загрузить редактор. Перезапустите приложение.');
@@ -12,20 +13,24 @@ export class ClassicSurface {
       selector: '#edit-content', base_url: 'vendor/tinymce', suffix: '.min', license_key: 'gpl',
       language: 'ru',
       plugins: 'lists link table code', menubar: false, promotion: false, branding: false,
-      toolbar: 'undo redo | blocks | bold italic underline | bullist numlist | blockquote link table | removeformat code',
+      toolbar: 'undo redo | blocks | bold italic underline | bullist numlist | blockquote noteLink table | removeformat code',
       toolbar_mode: 'sliding', resize: false, height: '100%',
       convert_urls: false, relative_urls: false, remove_script_host: false,
       paste_data_images: false, automatic_uploads: false,
       noneditable_class: 'mceNonEditable',
       content_security_policy: "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';",
       content_style: 'body{font:15px/1.7 Arial,sans-serif;color:#505a64;margin:20px} .mceNonEditable{display:inline-block;padding:8px 12px;background:#edf3f8;border:1px solid #cfdae5;color:#7a8a99;border-radius:3px} table{border-collapse:collapse} td,th{border:1px solid #d7e1eb;padding:8px}',
+      contextmenu: false,
       setup: editor => {
+        editor.ui.registry.addButton('noteLink',{icon:'link',tooltip:'Ссылка',onAction:()=>this.editLink()});
         editor.on('input change Undo Redo', () => this.update());
         editor.on('NodeChange SelectionChange focus blur keyup mouseup',()=>this.selectionChanged?.());
         editor.addShortcut('meta+s', 'Сохранить заметку', () => this.save());
       },
     });
     this.editor = editors[0];
+    this.editor.addShortcut('meta+k','Добавить или изменить ссылку',()=>this.editLink());
+    this.unbindLinks=bindExternalLinks(this.editor.getBody(),this.openExternal,this.linkError);
   }
   clean(html) {
     return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS: ['style','form','input','button','textarea','iframe','object','embed'], ADD_ATTR: ['data-note-protected'] });
@@ -90,6 +95,12 @@ export class ClassicSurface {
     this.editor.undoManager.transact(()=>this.editor.execCommand(commands[command],false,command==='createLink'?{href:value}:['foreColor','hiliteColor'].includes(command)?normalizeColor(value):undefined));
     this.update();return true;
   }
+  async setLink(href,text,range,existing){
+    if(!range||!this.editor.getBody().contains(range.startContainer)||!this.editor.getBody().contains(range.endContainer)||existing&&!this.editor.getBody().contains(existing))return false;
+    this.editor.focus();let changed=false;
+    this.editor.undoManager.transact(()=>{changed=updateLink(range,href,text,existing);});
+    if(changed)this.update();return changed;
+  }
   async typography(property,value,range=this.selectionRange()){
     const clean=property==='font-family'?normalizeFontFamily(value):property==='font-size'?normalizeFontSize(value):'';
     if(!clean||!range||range.collapsed||!this.editor.getBody().contains(range.startContainer)||!this.editor.getBody().contains(range.endContainer))return false;
@@ -101,5 +112,5 @@ export class ClassicSurface {
   focus(anchor) { this.editor.focus(); focusContent(this.editor.getBody(),anchor); }
   undo() { this.editor.undoManager.undo(); this.update(); }
   redo() { this.editor.undoManager.redo(); this.update(); }
-  destroy() { this.editor?.remove(); this.editor=null; this.media?.clear(); }
+  destroy() { this.unbindLinks?.();this.editor?.remove(); this.editor=null; this.media?.clear(); }
 }

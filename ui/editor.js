@@ -1,14 +1,14 @@
-import { spellingStrings, typographyStrings } from './strings.js';
+import { spellingStrings, typographyStrings, linkStrings } from './strings.js';
 import { snapshotIsCurrent, selectionInSnapshot } from './spelling-adapter.js';
 import { htmlToText } from './content.js';
 import { ClassicSurface } from './classic-editor.js';
 import { BlockSurface } from './block-editor.js';
-import { safeLink } from './editor-document.js';
+import { normalizeWebUrl } from './links.js';
 import { ALIGNMENTS, normalizeColor, FONT_FAMILIES, FONT_SIZES, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 const $ = id => document.getElementById(id);
 export class NoteEditor {
-  constructor({save,onSaved,status,onBusy,mode='blocks'}) {
-    Object.assign(this,{send:save,onSaved,status,onBusy});
+  constructor({save,onSaved,status,onBusy,openExternal=()=>{throw Error(linkStrings.unavailable);},mode='blocks'}) {
+    Object.assign(this,{send:save,onSaved,status,onBusy,openExternal});
     this.active=false;this.saving=false;this.preferredMode=['blocks','classic'].includes(mode)?mode:'blocks';this.mode=this.preferredMode;this.bodyDirty=false;this.saveSequence=0;
     $('edit-title').addEventListener('input',()=>{this.spellingRevision=(this.spellingRevision||0)+1;this.update();});
     $('save-note').addEventListener('click',()=>this.save());
@@ -44,14 +44,27 @@ export class NoteEditor {
     $('style-color-reset').addEventListener('click',()=>this.applyColor(this.colorSelection?.command==='hiliteColor'?'transparent':'#505a64'));
     $('style-color-cancel').addEventListener('click',()=>{$('style-color-dialog').close();this.colorSelection=null;});
     $('style-color-dialog').addEventListener('cancel',()=>{this.colorSelection=null;});
-    $('format-link-form').addEventListener('submit',event=>{
-      event.preventDefault();const href=safeLink($('format-link-url').value);
-      if(!href){$('format-link-error').textContent='Укажите https://, http://, mailto: или другую поддерживаемую ссылку.';return;}
-      const saved=this.linkSelection;$('format-link-dialog').close();this.linkSelection=null;
-      if(saved?.surface===this.surface)this.format('createLink',href,saved.range);
+    $('format-link-form').addEventListener('submit',async event=>{
+      event.preventDefault();
+      const href=normalizeWebUrl($('format-link-url').value,true);
+      if(!href){$('format-link-error').textContent=linkStrings.invalid;return;}
+      const saved=this.linkSelection,text=$('format-link-text').value.trim()||href;
+      if(!saved||saved.surface!==this.surface||saved.revision!==(this.spellingRevision||0)){$('format-link-error').textContent=linkStrings.stale;return;}
+      $('format-link-dialog').close();this.linkSelection=null;
+      this.checking=true;this.onBusy(true);this.update();
+      try{if(await this.surface.setLink(href,text,saved.range,saved.link))this.change();else this.status(linkStrings.stale,true);}
+      catch(error){$('save-error').textContent=String(error);}
+      finally{this.checking=false;this.onBusy(false);this.update();}
+    });
+    $('format-link-open')?.addEventListener('click',async()=>{
+      const href=normalizeWebUrl($('format-link-url').value,true);
+      if(!href){$('format-link-error').textContent=linkStrings.invalid;return;}
+      const button=$('format-link-open');button.disabled=true;
+      try{await this.openExternal(href);}catch{$('format-link-error').textContent=linkStrings.openFailed;}
+      finally{button.disabled=false;}
     });
     $('format-link-cancel').addEventListener('click',()=>{$('format-link-dialog').close();this.linkSelection=null;});
-    $('format-link-remove').addEventListener('click',()=>{const saved=this.linkSelection;$('format-link-dialog').close();this.linkSelection=null;if(saved?.surface===this.surface)this.format('unlink',undefined,saved.range);});
+    $('format-link-remove').addEventListener('click',()=>{const saved=this.linkSelection;$('format-link-dialog').close();this.linkSelection=null;if(saved?.surface===this.surface&&saved.revision===(this.spellingRevision||0))this.format('unlink',undefined,saved.range);});
     $('format-link-dialog').addEventListener('cancel',()=>{this.linkSelection=null;});
     for(const [id,choice] of [['keep-editing','stay'],['discard-edit','discard'],['save-and-continue','save']]) $(id).addEventListener('click',()=>this.resolveDialog(choice));
     $('unsaved-dialog').addEventListener('cancel',e=>{e.preventDefault();this.resolveDialog('stay');});
@@ -64,6 +77,7 @@ export class NoteEditor {
     window.addEventListener('keydown',e=>{
       if(!this.active)return;
       if($('format-link-dialog').open||$('style-color-dialog').open||$('spelling-dialog')?.open){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s')e.preventDefault();return;}
+      if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();this.openLink();return;}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();this.save();}
       if(this.mode==='blocks'&&(e.ctrlKey||e.metaKey)&&e.target.closest?.('#block-content')&&['z','y'].includes(e.key.toLowerCase())) {
         e.preventDefault();this.travel(e.key.toLowerCase()==='y'||e.shiftKey?'redo':'undo');
@@ -96,7 +110,7 @@ export class NoteEditor {
   async loadSurface(note) {
     const create=()=>{
       $('block-content').hidden=this.mode!=='blocks';$('classic-surface').hidden=this.mode!=='classic';
-      this.surface=this.mode==='blocks'?new BlockSurface((error,changed)=>this.change(error,changed)):new ClassicSurface(()=>this.change(),()=>this.updateFormatting());
+      this.surface=this.mode==='blocks'?new BlockSurface((error,changed)=>this.change(error,changed),this.openExternal,this.status):new ClassicSurface(()=>this.change(),()=>this.updateFormatting(),this.openExternal,this.status,()=>this.openLink());
     };
     create();
     try {await this.surface.load(note);}
@@ -168,12 +182,16 @@ export class NoteEditor {
     if(saved.surface===this.surface)this.format(saved.command,value,saved.range);
   }
   openLink(){
+    if(!this.active||this.saving||this.opening||this.historyBusy||this.checking)return;
     const range=this.surface?.selectionRange();if(!range)return;
     const node=range.startContainer.nodeType===1?range.startContainer:range.startContainer.parentElement;
     const link=node.closest('a');
-    if(range.collapsed&&!link){this.status('Выделите текст, для которого нужно добавить ссылку.',true);return;}
-    if(range.collapsed&&link)range.selectNodeContents(link);
-    this.linkSelection={surface:this.surface,range};$('format-link-url').value=link?.getAttribute('href') || '';$('format-link-error').textContent='';
+    if(link)range.selectNodeContents(link);
+    this.linkSelection={surface:this.surface,range,link,revision:this.spellingRevision||0};
+    $('format-link-url').value=link?.getAttribute('href') || '';
+    $('format-link-text').value=link?.textContent || range.toString();
+    $('format-link-remove').disabled=!link;
+    $('format-link-error').textContent='';
     $('format-link-dialog').showModal();$('format-link-url').focus();
   }
   spellingSnapshot(){

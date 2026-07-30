@@ -1,3 +1,4 @@
+import { bindExternalLinks, updateLink } from './links.js';
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
 import { EditorDocument, documentSignature } from './editor-document.js';
 import { safeNoteFragment } from './content.js';
@@ -7,7 +8,7 @@ import { ALIGNMENTS, normalizeColor, normalizeFontFamily, normalizeFontSize } fr
 const INLINE_RULES={b:true,strong:true,i:true,em:true,u:true,s:true,strike:true,del:true,a:{href:true,title:true},br:true,code:true,mark:{style:true},span:{style:true},font:{color:true}};
 const $=id=>document.getElementById(id);
 export class BlockSurface {
-  constructor(onChange) {this.notify=onChange;this.ready=false;this.history=[];this.historyIndex=-1;this.queue=Promise.resolve();}
+  constructor(onChange,onOpenLink=()=>{},onLinkError=()=>{}) {this.openExternal=onOpenLink;this.linkError=onLinkError;this.notify=onChange;this.ready=false;this.history=[];this.historyIndex=-1;this.queue=Promise.resolve();}
   async load(note) {
     const lib=window.NoteStationBlocks;
     if(!lib)throw Error('Не удалось загрузить Editor.js.');
@@ -63,8 +64,7 @@ export class BlockSurface {
       checkState(){return false;}
     }
     const holder=$('block-content');holder.replaceChildren();
-    this.onLink=event=>{if(event.target.closest('a'))event.preventDefault();};
-    holder.addEventListener('click',this.onLink,true);
+    this.unbindLinks=bindExternalLinks(holder,this.openExternal,this.linkError);
     this.onPaste=event=>{
       if(!this.ready)return;
       const html=event.clipboardData?.getData('text/html');
@@ -201,6 +201,15 @@ export class BlockSurface {
     if(!changed)return false;
     this.notify();this.scheduleHistory();return true;
   }
+  async setLink(href,text,range,existing){
+    if(!this.validRange(range)||existing&&!$('block-content').contains(existing))return false;
+    await this.capture();
+    if(!this.validRange(range))return false;
+    const element=(range.startContainer.nodeType===1?range.startContainer:range.startContainer.parentElement).closest('[contenteditable="true"]');
+    element.focus({preventScroll:true});
+    if(!updateLink(range,href,text,existing))return false;
+    element.dispatchEvent(new Event('input',{bubbles:true}));this.notify();await this.capture();return true;
+  }
   async typography(property,value,range=this.selectionRange()){
     const clean=property==='font-family'?normalizeFontFamily(value):property==='font-size'?normalizeFontSize(value):'';
     if(!clean||!this.validRange(range)||range.collapsed)return false;
@@ -243,5 +252,5 @@ export class BlockSurface {
     }
     await this.capture();
   }
-  destroy(){this.ready=false;clearTimeout(this.timer);const holder=$('block-content');holder.removeEventListener('click',this.onLink,true);holder.removeEventListener('paste',this.onPaste,true);this.editor?.destroy?.();this.editor=null;this.history=[];this.document=null;}
+  destroy(){this.ready=false;clearTimeout(this.timer);const holder=$('block-content');this.unbindLinks?.();holder.removeEventListener('paste',this.onPaste,true);this.editor?.destroy?.();this.editor=null;this.history=[];this.document=null;}
 }

@@ -296,3 +296,19 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 .editor-controls #format-font-family{width:150px;max-width:150px;flex-shrink:0;height:30px}
 .editor-controls #format-font-size{width:76px;max-width:76px;flex-shrink:0;height:30px;margin-right:8px}
 .editor-controls select:focus-visible{outline:2px solid #3799be;outline-offset:2px}
+
+.app-dialog{font:13px/1.5 Arial,"Segoe UI",sans-serif;color:#505a64;background:#fff;border:1px solid #c8d5e2;border-radius:5px;padding:24px;max-height:calc(100dvh - 32px);max-width:calc(100vw - 32px);box-shadow:0 10px 45px #22384e30}
+.app-dialog::backdrop{background:#24384c55}
+#format-link-dialog{padding:24px;max-width:calc(100vw - 32px)}
+#format-link-form{display:flex;flex-direction:column;max-height:calc(100dvh - 82px)}
+#format-link-title{font-size:20px;font-weight:600;flex-shrink:0}
+#format-link-form .dialog-body{overflow:auto;min-height:0;padding:2px}
+#format-link-form .dialog-actions{flex-shrink:0;margin-top:16px;gap:8px}
+#format-link-form input{min-height:32px;font:inherit;border:1px solid #c8d5e2;border-radius:3px;background:#fff;color:#505a64}
+#format-link-form button{min-height:32px;border:1px solid #c8d5e2;border-radius:3px;background:#fff;color:#505a64}
+#format-link-form button:disabled{cursor:default}
+#format-link-form input:focus-visible,#format-link-form button:focus-visible{outline:2px solid #3799be;outline-offset:2px}
+#format-link-form button[type="submit"]{background:#169fd0;color:#fff;border-color:#138dbb}
+#note-content a,#history-preview a,.preserved-preview a{color:#176b94;text-decoration:underline;cursor:pointer;overflow-wrap:anywhere}
+#block-content a{cursor:pointer}
+#note-content a:focus-visible,#history-preview a:focus-visible{outline:2px solid #3799be;outline-offset:2px}

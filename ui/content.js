@@ -1,3 +1,5 @@
+import { linkStrings } from './strings.js';
+import { normalizeWebUrl } from './links.js';
 import { normalizeColor, safeStyles } from './editor-styles.js';
 // Only explicitly validated presentation values are copied; server handlers/resources are not.
 const ALLOWED = new Set(['P','DIV','BR','H1','H2','H3','H4','H5','H6','STRONG','B','EM','I','U','S','STRIKE','DEL','UL','OL','LI','BLOCKQUOTE','PRE','CODE','HR','TABLE','THEAD','TBODY','TFOOT','TR','TD','TH','SUP','SUB','SPAN','MARK','FONT']);
@@ -17,6 +19,14 @@ export function safeNoteFragment(html) {
       if (DROP.has(tag)) continue;
       if (tag === 'IMG') {
         if (node.getAttribute('alt')) target.append(document.createTextNode(`[${node.getAttribute('alt')}]`));
+        continue;
+      }
+      if (tag === 'A') {
+        const href = normalizeWebUrl(node.getAttribute('href'));
+        if (href) {
+          const link = document.createElement('a'); link.href = href; link.rel = 'noopener noreferrer'; link.title = linkStrings.openHint;
+          copy(node, link, depth + 1); target.append(link);
+        } else { copy(node, target, depth + 1); }
         continue;
       }
       if (ALLOWED.has(tag)) {

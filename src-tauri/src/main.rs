@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod external_links;
 mod session_store;
 mod spelling;
 mod synology;
@@ -10,6 +11,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use synology::{ConnectionMode, NasClient, Note, NoteSummary, NoteVersion, Notebook, SavedNote};
 use tauri::{Emitter, Manager, State};
 use tokio::sync::Mutex;
+
+#[tauri::command]
+async fn open_external_url(url: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || external_links::open_web_url(&url))
+        .await
+        .map_err(|_| "Не удалось открыть системный браузер.".to_string())?
+}
 
 #[tauri::command]
 fn spelling_licenses() -> &'static str {
@@ -446,6 +454,20 @@ fn main() {
     tauri::Builder::default()
         .manage(AppState::default())
         .manage(SpellingState::default())
+        .setup(|app| {
+            let config = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|window| window.label == "main")
+                .ok_or("Не найдена конфигурация главного окна.")?;
+            tauri::WebviewWindowBuilder::from_config(app, config)?
+                .on_navigation(external_links::app_navigation)
+                .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+                .build()?;
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let state = window.state::<AppState>();
@@ -456,6 +478,7 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            open_external_url,
             spelling_licenses,
             check_spelling,
             spelling_suggestions,
