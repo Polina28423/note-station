@@ -13,7 +13,7 @@ class Preview(BaseHTTPRequestHandler):
                 source = source.replace('src="app.js"', 'src="/block-editor-check.js"')
             data = source.encode()
             mime = 'text/html; charset=utf-8'
-        elif name in ['/content-check.html','/content-check.js','/editor-check.html','/editor-check.js','/block-editor-check.js','/style.css','/notestation.css','/panels.js','/startup.js','/editor.js','/block-editor.js','/classic-editor.js','/editor-document.js','/editor-focus.js','/editor-styles.js','/app.js','/history.js','/strings.js','/spelling.js','/spelling-adapter.js','/content.js','/preferences.js','/library.js','/mock-api.js']:
+        elif name in ['/content-check.html','/content-check.js','/editor-check.html','/editor-check.js','/block-editor-check.js','/style.css','/notestation.css','/panels.js','/startup.js','/editor.js','/block-editor.js','/classic-editor.js','/editor-document.js','/editor-focus.js','/editor-styles.js','/app.js','/history.js','/strings.js','/spelling.js','/spelling-adapter.js','/links.js','/content.js','/preferences.js','/library.js','/mock-api.js']:
             path = root / ('tests' if name in ['/mock-api.js','/content-check.html','/content-check.js','/editor-check.html','/editor-check.js','/block-editor-check.js'] else 'ui') / name[1:]
             data = path.read_bytes(); mime = 'text/html; charset=utf-8' if name.endswith('.html') else 'text/css' if name.endswith('.css') else 'text/javascript'
         elif name.startswith('/vendor/'):

@@ -12,5 +12,7 @@ try {
  check(htmlToText('<p>Один</p><p>Два<br>Три</p>') === 'Один\nДва\nТри','copy text preserves line breaks');
  const styled=safeNoteFragment('<p style="text-align:right;background-image:url(https://untrusted.invalid);color:#123456">Color</p><span style="background-color:#fff2a8;position:fixed">Highlight</span>');
  check(styled.querySelector('p').style.textAlign==='right'&&!styled.querySelector('p').style.backgroundImage&&!styled.querySelector('span').style.position&&!!styled.querySelector('span').style.backgroundColor,'reader keeps alignment and background color while dropping resource-loading CSS');
+ const linked=safeNoteFragment('<a href="https://example.org/path" target="_self" onclick="bad()">Сайт</a><a href="file:///C:/x">Файл</a><a href="javascript:bad()">Код</a>');
+ check(linked.querySelectorAll('a').length===1&&linked.querySelector('a').getAttribute('href')==='https://example.org/path'&&!linked.querySelector('a').hasAttribute('onclick'),'reader preserves only validated website links');
  document.getElementById('results').textContent = checks.join('\n');
 } catch(error) { document.getElementById('results').textContent = checks.join('\n') + '\nFAIL ' + error.message; }
