@@ -1,3 +1,4 @@
+import { bindSettingsTabs } from './settings.js';
 import { bindExternalLinks } from './links.js';
 import { bindSpelling } from './spelling.js';
 import { bindNoteHistory } from './history.js';
@@ -67,8 +68,9 @@ noteBody.addEventListener('click',event=>{
 });
 noteBody.addEventListener('focus',()=>{if(!bodyPointer&&editableNote())noteEditor.start(currentNote,{focusBody:true});});
 noteBody.addEventListener('keydown',event=>{if(event.target.closest?.('a'))return;if((event.key==='Enter'||event.key==='F2')&&editableNote()){event.preventDefault();noteEditor.start(currentNote,{focusBody:true});}});
+const settingsTabs=bindSettingsTabs({invoke});
 $('open-settings').addEventListener('click',()=>{
-  if(busy)return;$('editor-mode').value=preferredEditor;$('app-settings').showModal();
+  if(busy)return;$('editor-mode').value=preferredEditor;settingsTabs.reset();$('app-settings').showModal();
 });
 $('cancel-settings').addEventListener('click',()=>$('app-settings').close());
 $('apply-settings').addEventListener('click',async()=>{

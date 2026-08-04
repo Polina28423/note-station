@@ -34,3 +34,13 @@ export const linkStrings = Object.freeze({
   stale: 'Текст изменился. Откройте окно ссылки заново.',
   openHint: 'Открыть сайт в браузере',
 });
+
+export const settingsStrings = Object.freeze({
+  loading: 'Загрузка сохранённых сессий…',
+  empty: 'Сохранённых сессий пока нет. Включите сохранение сессии при входе на NAS.',
+  loaded: count => `Сохранённых сессий: ${count}`,
+  failed: 'Не удалось загрузить список сессий. Попробуйте обновить его.',
+  strict: 'HTTPS · сертификат проверяется',
+  unverified: 'HTTPS · сертификат не проверяется',
+  http: 'HTTP · без шифрования',
+});

@@ -217,13 +217,12 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 #protected-dialog::backdrop{background:#24384c55}#protected-dialog h2{font-size:18px;margin:0 0 12px}
 #protected-dialog p{font-size:13px;line-height:1.6;margin-bottom:22px}
 @media(max-width:1050px){#block-content{padding-left:34px;padding-right:20px}.editor-controls{gap:5px;padding:7px 10px}.editor-controls button{font-size:10px}}
-#app-settings{border:1px solid #c8d5e2;border-radius:5px;padding:25px;width:min(440px,90vw);max-width:90vw;color:#505a64;box-shadow:0 10px 45px #22384e30}
+#app-settings{width:min(640px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);padding:24px;overflow:hidden}
 #app-settings::backdrop{background:#24384c55}
 #settings-title{font-size:20px;margin:0 0 22px;color:#425c70}
 #app-settings label{font-size:13px;margin:0 0 8px}
 #app-settings select{width:100%;padding:9px 10px;font-size:13px;border:1px solid #c8d7e2;border-radius:3px;background:#fff;color:#505a64}
 .settings-help{font-size:12px;line-height:1.7;color:#7a8f9f;margin:12px 0}
-#app-settings .dialog-actions{margin-top:24px}
 #apply-settings{background:#169fd0;color:#fff;border-color:#138dbb}
 #note-content.click-to-edit{cursor:text;min-height:120px}
 #note-content.click-to-edit:focus-visible{outline:2px solid #5daecb;outline-offset:6px;border-radius:2px}
@@ -312,3 +311,29 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 #note-content a,#history-preview a,.preserved-preview a{color:#176b94;text-decoration:underline;cursor:pointer;overflow-wrap:anywhere}
 #block-content a{cursor:pointer}
 #note-content a:focus-visible,#history-preview a:focus-visible{outline:2px solid #3799be;outline-offset:2px}
+#app-settings[open]{display:flex;flex-direction:column}
+#app-settings #settings-title{font-size:20px;line-height:1.4;font-weight:600;flex-shrink:0;margin:0 0 20px}
+.settings-tabs{display:flex;gap:20px;flex-shrink:0;border-bottom:1px solid #d7e1eb;margin-bottom:20px}
+.settings-tabs button{border:0;border-radius:0;background:transparent;padding:0 0 12px;min-height:32px;color:#637585;font:inherit;white-space:nowrap}
+.settings-tabs button[aria-selected="true"]{color:#176b94;border-bottom:2px solid #169fd0;font-weight:600}
+.settings-panels{overflow:auto;min-height:0;padding:2px}
+#app-settings [role="tabpanel"]:focus-visible,#app-settings button:focus-visible{outline:2px solid #3799be;outline-offset:2px}
+#app-settings .settings-help{color:#637585}
+.settings-info-card{border:1px solid #d7e1eb;border-radius:5px;padding:14px 16px;margin:12px 0;background:#fafcfd}
+.settings-info-card h3{font-size:13px;margin:0 0 6px;font-weight:600}
+.settings-info-card h3 span{font-size:12px;font-weight:400;color:#637585;margin-left:8px}
+.settings-info-card p{font-size:13px;line-height:1.5;margin:0;color:#637585}
+.settings-shortcuts{display:flex;flex-wrap:wrap;gap:8px 18px;color:#637585;font-size:12px;margin-top:16px}
+.settings-shortcuts kbd{font:11px Consolas,monospace;border:1px solid #d7e1eb;border-radius:3px;padding:2px 4px;background:#fafcfd;margin-right:4px}
+.settings-panel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.settings-panel-heading h3{font-size:14px;margin:0}
+#app-settings button{min-height:32px;border-radius:3px}
+#app-settings .settings-tabs button{border-radius:0}
+#app-settings button:disabled{cursor:default}
+#app-settings #settings-sessions-refresh{font:12px Arial,"Segoe UI",sans-serif;border:1px solid #c8d5e2;background:#fff;color:#505a64;padding:6px 10px}
+#settings-sessions-status{font-size:12px;color:#637585;margin:14px 0;overflow-wrap:anywhere}
+.settings-session-card{display:flex;flex-direction:column;gap:5px;border:1px solid #d7e1eb;border-radius:5px;padding:14px 16px;margin:10px 0;overflow-wrap:anywhere}
+.settings-session-card strong{font-size:13px}.settings-session-card span,.settings-session-card small{font-size:12px;color:#637585}
+.settings-security-note{padding:12px 14px;border-radius:4px;background:#f3f7fa;color:#637585;font-size:12px;line-height:1.6;margin:16px 0 0}
+#app-settings .dialog-actions{flex-shrink:0;margin-top:20px;padding-top:16px;border-top:1px solid #d7e1eb}
+@media(max-width:500px){#app-settings{padding:16px}.settings-tabs{gap:14px}.settings-tabs button{font-size:12px}}
