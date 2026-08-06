@@ -90,6 +90,14 @@ pub struct Notebook {
     pub stack: Option<String>,
     #[serde(default)]
     pub owner: Option<NotebookOwner>,
+    #[serde(default)]
+    pub shared: Value,
+    #[serde(default)]
+    pub individual_shared: Value,
+    #[serde(default)]
+    pub category: String,
+    #[serde(flatten)]
+    pub access: AccessContext,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -111,6 +119,102 @@ pub struct NoteSummary {
     pub brief: Option<String>,
     #[serde(default)]
     pub mtime: Option<Value>,
+    #[serde(default)]
+    pub tag: Value,
+    #[serde(default)]
+    pub recycle: Value,
+    #[serde(flatten)]
+    pub access: AccessContext,
+}
+
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct AccessContext {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub perm_from: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smart_id: Option<String>,
+}
+impl AccessContext {
+    fn params(&self) -> Result<Vec<(String, Value)>, String> {
+        let mut params = Vec::new();
+        if let Some(value) = &self.perm_from {
+            validate_version(value)?;
+            params.push(("perm_from".into(), value.clone()));
+        }
+        if let Some(id) = &self.smart_id {
+            validate_object_id(id)?;
+            params.push(("smart_id".into(), json!(id)));
+        }
+        Ok(params)
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Todo {
+    pub object_id: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default, deserialize_with = "deserialize_flag")]
+    pub done: bool,
+    #[serde(default)]
+    pub note_id: Option<String>,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    #[serde(default)]
+    pub due_date: Option<Value>,
+    #[serde(default)]
+    pub items: Vec<Todo>,
+}
+#[derive(Serialize, Deserialize)]
+pub struct Tag {
+    #[serde(alias = "object_id", alias = "id")]
+    pub tag_id: String,
+    #[serde(default)]
+    pub title: String,
+}
+#[derive(Serialize)]
+pub struct SectionMutation {
+    pub notice: Option<String>,
+}
+#[derive(Serialize)]
+pub struct TodoUpdate {
+    pub done: bool,
+    pub notice: Option<String>,
+}
+fn flag(value: &Value) -> bool {
+    value == &json!(true) || value == &json!(1)
+}
+fn deserialize_flag<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
+    let value = Value::deserialize(deserializer)?;
+    match value {
+        Value::Bool(value) => Ok(value),
+        Value::Number(ref n) if n.as_u64() == Some(0) || n.as_u64() == Some(1) => Ok(flag(&value)),
+        Value::Null => Ok(false),
+        _ => Err(serde::de::Error::custom("Invalid boolean flag")),
+    }
+}
+fn validate_object_id(id: &str) -> Result<(), String> {
+    if id.is_empty() || id.len() > 1024 {
+        Err("Некорректный идентификатор объекта.".into())
+    } else {
+        Ok(())
+    }
+}
+fn shared_notebook(notebook: &Notebook) -> bool {
+    flag(&notebook.shared)
+        || flag(&notebook.individual_shared)
+        || notebook.access.perm_from.is_some()
+        || matches!(notebook.category.as_str(), "shared" | "joined")
+}
+fn tag_matches(value: &Value, id: &str) -> bool {
+    match value {
+        Value::String(value) => value == id,
+        Value::Array(values) => values.iter().any(|value| tag_matches(value, id)),
+        Value::Object(values) => ["tag_id", "object_id", "id"]
+            .iter()
+            .any(|key| values.get(*key).and_then(Value::as_str) == Some(id)),
+        _ => false,
+    }
 }
 
 #[derive(Serialize)]
@@ -284,7 +388,7 @@ impl NasClient {
                     ("method".into(), "query".into()),
                     (
                         "query".into(),
-                        "SYNO.API.Auth,SYNO.NoteStation.Notebook,SYNO.NoteStation.Note,SYNO.NoteStation.Note.Version".into(),
+                        "SYNO.API.Auth,SYNO.NoteStation.Notebook,SYNO.NoteStation.Note,SYNO.NoteStation.Note.Version,SYNO.NoteStation.Tag,SYNO.NoteStation.Todo".into(),
                     ),
                 ],
             )
@@ -295,6 +399,14 @@ impl NasClient {
     }
 
     async fn post(&self, path: &str, fields: Vec<(String, String)>) -> Result<Value, String> {
+        self.post_with_data(path, fields, false).await
+    }
+    async fn post_with_data(
+        &self,
+        path: &str,
+        fields: Vec<(String, String)>,
+        optional_data: bool,
+    ) -> Result<Value, String> {
         let mut response = self.http.post(endpoint(&self.base, path)?)
             .form(&fields).send().await.map_err(|e| {
                 // Never expose reqwest error URLs, request bodies or server diagnostics.
@@ -317,10 +429,15 @@ impl NasClient {
             }
             body.extend_from_slice(&chunk);
         }
-        decode_response(
-            serde_json::from_slice(&body)
-                .map_err(|_| "NAS вернул некорректный JSON.".to_string())?,
-        )
+        let value: Value = serde_json::from_slice(&body)
+            .map_err(|_| "NAS вернул некорректный JSON.".to_string())?;
+        if optional_data
+            && value.get("success").and_then(Value::as_bool) == Some(true)
+            && value.get("data").is_none()
+        {
+            return Ok(json!({}));
+        }
+        decode_response(value)
     }
 
     fn api(&self, name: &str, version: u32) -> Result<&ApiInfo, String> {
@@ -390,6 +507,17 @@ impl NasClient {
         method: &str,
         params: Vec<(String, Value)>,
     ) -> Result<Value, String> {
+        self.call_version_inner(api, version, method, params, false)
+            .await
+    }
+    async fn call_version_inner(
+        &self,
+        api: &str,
+        version: u32,
+        method: &str,
+        params: Vec<(String, Value)>,
+        optional_data: bool,
+    ) -> Result<Value, String> {
         let info = self.api(api, version)?;
         let mut fields = params;
         fields.extend([
@@ -401,23 +529,35 @@ impl NasClient {
                 json!(self.sid.as_ref().ok_or("Нет сессии NAS.")?),
             ),
         ]);
-        self.post(&info.path, encode_entry(fields)).await
+        self.post_with_data(&info.path, encode_entry(fields), optional_data)
+            .await
     }
 
     async fn list(&self, api: &str, key: &str) -> Result<Vec<Value>, String> {
+        self.list_options(api, 2, key, vec![]).await
+    }
+    async fn list_options(
+        &self,
+        api: &str,
+        version: u32,
+        key: &str,
+        params: Vec<(String, Value)>,
+    ) -> Result<Vec<Value>, String> {
         let mut rows = Vec::new();
         for _ in 0..50 {
-            let data = self
-                .call(
-                    api,
-                    "list",
-                    vec![
-                        ("offset".into(), json!(rows.len())),
-                        ("limit".into(), json!(200)),
-                    ],
-                )
-                .await?;
-            let page = match data.get(key) {
+            let mut fields = params.clone();
+            fields.extend([
+                ("offset".into(), json!(rows.len())),
+                ("limit".into(), json!(200)),
+            ]);
+            let data = self.call_version(api, version, "list", fields).await?;
+            let page = match data.get(key).or_else(|| {
+                if key == "items" {
+                    data.get("todos")
+                } else {
+                    None
+                }
+            }) {
                 Some(Value::Array(page)) => page.clone(),
                 None | Some(Value::Null)
                     if data.get("total").and_then(Value::as_u64) == Some(0) =>
@@ -454,8 +594,175 @@ impl NasClient {
     }
 
     pub async fn notes(&self) -> Result<Vec<NoteSummary>, String> {
-        serde_json::from_value(json!(self.list("SYNO.NoteStation.Note", "notes").await?))
-            .map_err(|_| "Неизвестный формат заметок.".into())
+        let rows = self
+            .list_options(
+                "SYNO.NoteStation.Note",
+                3,
+                "notes",
+                vec![("filter".into(), json!({"recycle":false}))],
+            )
+            .await?;
+        let notes: Vec<NoteSummary> = serde_json::from_value(json!(rows))
+            .map_err(|_| "Неизвестный формат заметок.".to_string())?;
+        Ok(notes
+            .into_iter()
+            .filter(|note| !flag(&note.recycle))
+            .collect())
+    }
+
+    pub async fn todos(&self) -> Result<Vec<Todo>, String> {
+        let rows = self
+            .list_options(
+                "SYNO.NoteStation.Todo",
+                2,
+                "items",
+                vec![("field".into(), json!({"items":true}))],
+            )
+            .await?;
+        serde_json::from_value(json!(rows)).map_err(|_| "Неизвестный формат задач NAS.".into())
+    }
+    pub async fn set_todo_done(
+        &self,
+        id: &str,
+        done: bool,
+        expected_done: bool,
+    ) -> Result<TodoUpdate, String> {
+        validate_object_id(id)?;
+        let current = self
+            .call(
+                "SYNO.NoteStation.Todo",
+                "get",
+                vec![("object_id".into(), json!(id))],
+            )
+            .await?;
+        if !current
+            .get("done")
+            .is_some_and(|value| value.is_boolean() || matches!(value.as_u64(), Some(0 | 1)))
+        {
+            return Err("NAS не вернул состояние задачи. Обновите список.".into());
+        }
+        let current: Todo = serde_json::from_value(current)
+            .map_err(|_| "Неизвестный формат задачи NAS.".to_string())?;
+        if current.object_id != id {
+            return Err("NAS вернул другую задачу. Обновите список.".into());
+        }
+        if current.done != expected_done {
+            return Err("Состояние задачи уже изменилось на NAS. Обновите список.".into());
+        }
+        if current.done == done {
+            return Ok(TodoUpdate { done, notice: None });
+        }
+        self.call_version_inner(
+            "SYNO.NoteStation.Todo",
+            2,
+            "set",
+            vec![
+                ("object_id".into(), json!(id)),
+                ("done".into(), json!(done)),
+            ],
+            true,
+        )
+        .await?;
+        Ok(TodoUpdate { done, notice: None })
+    }
+    pub async fn tags(&self) -> Result<Vec<Tag>, String> {
+        let rows = self
+            .list_options("SYNO.NoteStation.Tag", 1, "tags", vec![])
+            .await?;
+        serde_json::from_value(json!(rows)).map_err(|_| "Неизвестный формат тегов NAS.".into())
+    }
+    async fn section_notes(
+        &self,
+        recycle: bool,
+        extra: Vec<(String, Value)>,
+    ) -> Result<Vec<NoteSummary>, String> {
+        let rows = self
+            .list_options(
+                "SYNO.NoteStation.Note",
+                3,
+                "notes",
+                extra
+                    .into_iter()
+                    .chain([
+                        ("filter".into(), json!({"recycle":recycle})),
+                        ("field".into(), json!({"tag":true})),
+                    ])
+                    .collect(),
+            )
+            .await?;
+        let notes: Vec<NoteSummary> = serde_json::from_value(json!(rows))
+            .map_err(|_| "Неизвестный формат заметок NAS.".to_string())?;
+        Ok(notes
+            .into_iter()
+            .filter(|note| note.recycle.is_null() || flag(&note.recycle) == recycle)
+            .collect())
+    }
+    pub async fn recycled_notes(&self) -> Result<Vec<NoteSummary>, String> {
+        self.section_notes(true, vec![]).await
+    }
+    pub async fn notes_for_tag(&self, id: &str) -> Result<Vec<NoteSummary>, String> {
+        validate_object_id(id)?;
+        let notes = self.section_notes(false, vec![]).await?;
+        if !notes.is_empty() && notes.iter().all(|note| note.tag.is_null()) {
+            return Err(
+                "NAS не вернул сведения о тегах заметок. Фильтрация недоступна для этого ответа."
+                    .into(),
+            );
+        }
+        Ok(notes
+            .into_iter()
+            .filter(|note| tag_matches(&note.tag, id))
+            .collect())
+    }
+    pub async fn shared_notebooks(&self) -> Result<Vec<Notebook>, String> {
+        Ok(self
+            .notebooks()
+            .await?
+            .into_iter()
+            .filter(shared_notebook)
+            .collect())
+    }
+    pub async fn shared_notes(&self, id: &str) -> Result<Vec<NoteSummary>, String> {
+        validate_object_id(id)?;
+        let notebook = self
+            .shared_notebooks()
+            .await?
+            .into_iter()
+            .find(|book| book.object_id == id)
+            .ok_or("Общий блокнот недоступен. Обновите список.")?;
+        let mut context = notebook.access;
+        if context.perm_from.is_none() {
+            context.perm_from = Some(json!(id));
+        }
+        let mut fields = context.params()?;
+        fields.push(("filter".into(), json!({"parent_id":id,"recycle":false})));
+        let rows = self
+            .list_options("SYNO.NoteStation.Note", 3, "notes", fields)
+            .await?;
+        let mut notes: Vec<NoteSummary> = serde_json::from_value(json!(rows))
+            .map_err(|_| "Неизвестный формат общих заметок.".to_string())?;
+        notes.retain(|note| note.parent_id == id && !flag(&note.recycle));
+        for note in &mut notes {
+            if note.access.perm_from.is_none() {
+                note.access = context.clone();
+            }
+        }
+        Ok(notes)
+    }
+    pub async fn section_note(&self, id: &str, context: AccessContext) -> Result<Note, String> {
+        self.read_note_context(id, None, context).await
+    }
+    pub async fn restore_recycled_note(
+        &self,
+        id: &str,
+        context: AccessContext,
+    ) -> Result<SectionMutation, String> {
+        validate_object_id(id)?;
+        let mut fields = context.params()?;
+        fields.push(("object_id".into(), json!(id)));
+        self.call_version_inner("SYNO.NoteStation.Note", 3, "restore", fields, true)
+            .await?;
+        Ok(SectionMutation { notice: None })
     }
 
     pub async fn note_versions(&self, id: &str) -> Result<Vec<NoteVersion>, String> {
@@ -510,10 +817,20 @@ impl NasClient {
     }
 
     async fn read_note(&self, id: &str, version: Option<Value>) -> Result<Note, String> {
+        self.read_note_context(id, version, AccessContext::default())
+            .await
+    }
+    async fn read_note_context(
+        &self,
+        id: &str,
+        version: Option<Value>,
+        context: AccessContext,
+    ) -> Result<Note, String> {
         if id.is_empty() || id.len() > 1024 {
             return Err("Некорректный ID заметки.".into());
         }
-        let mut params = vec![("object_id".into(), json!(id))];
+        let mut params = context.params()?;
+        params.push(("object_id".into(), json!(id)));
         if let Some(version) = version {
             params.push(("ver".into(), version));
         }
@@ -646,6 +963,228 @@ fn validate_note_update(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn section_case<F, Fut>(steps: Vec<(Value, Value)>, operation: F) -> Result<Value, String>
+    where
+        F: FnOnce(NasClient) -> Fut,
+        Fut: std::future::Future<Output = Result<Value, String>>,
+    {
+        use std::{
+            io::{Read, Write},
+            net::TcpListener,
+            thread,
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let worker = thread::spawn(move || {
+            for (expected, response) in steps {
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                let mut tcp = loop {
+                    match listener.accept() {
+                        Ok((tcp, _)) => break tcp,
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            assert!(
+                                std::time::Instant::now() < deadline,
+                                "Missing section request"
+                            );
+                            thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(error) => panic!("{error}"),
+                    }
+                };
+                tcp.set_nonblocking(false).unwrap();
+                tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut bytes = Vec::new();
+                let (start, length) = loop {
+                    let mut buffer = [0; 8192];
+                    let n = tcp.read(&mut buffer).unwrap();
+                    assert!(n > 0);
+                    bytes.extend_from_slice(&buffer[..n]);
+                    if let Some(end) = bytes.windows(4).position(|value| value == b"\r\n\r\n") {
+                        let header = String::from_utf8_lossy(&bytes[..end]);
+                        let length = header
+                            .lines()
+                            .find_map(|line| {
+                                line.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|value| value.trim().parse::<usize>().unwrap())
+                            })
+                            .unwrap();
+                        break (end + 4, length);
+                    }
+                };
+                while bytes.len() < start + length {
+                    let mut buffer = [0; 8192];
+                    let n = tcp.read(&mut buffer).unwrap();
+                    assert!(n > 0);
+                    bytes.extend_from_slice(&buffer[..n]);
+                }
+                let fields: HashMap<String, Value> =
+                    url::form_urlencoded::parse(&bytes[start..start + length])
+                        .map(|(key, value)| {
+                            (key.into_owned(), serde_json::from_str(&value).unwrap())
+                        })
+                        .collect();
+                assert_eq!(fields["_sid"], "section-fixture-token");
+                for (key, value) in expected.as_object().unwrap() {
+                    assert_eq!(fields.get(key), Some(value), "Field {key}");
+                }
+                if fields["method"] == "set" || fields["method"] == "restore" {
+                    assert_eq!(fields.len(), expected.as_object().unwrap().len() + 1);
+                }
+                let body = response.to_string();
+                write!(
+                    tcp,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+                .unwrap();
+            }
+        });
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let client = NasClient {
+            http: http_builder_for_mode(None, ConnectionMode::PlainHttp)
+                .unwrap()
+                .no_proxy()
+                .build()
+                .unwrap(),
+            base: normalize_server_for_mode(
+                &format!("http://{address}"),
+                ConnectionMode::PlainHttp,
+            )
+            .unwrap(),
+            sid: Some("section-fixture-token".into()),
+            apis: [
+                ("SYNO.NoteStation.Note", 3),
+                ("SYNO.NoteStation.Notebook", 2),
+                ("SYNO.NoteStation.Tag", 1),
+                ("SYNO.NoteStation.Todo", 2),
+            ]
+            .into_iter()
+            .map(|(name, max_version)| {
+                (
+                    name.into(),
+                    ApiInfo {
+                        path: "entry.cgi".into(),
+                        min_version: 1,
+                        max_version,
+                    },
+                )
+            })
+            .collect(),
+        };
+        let result = runtime.block_on(operation(client));
+        worker.join().unwrap();
+        result
+    }
+    #[test]
+    fn todo_list_and_completion_use_minimal_mutation_and_accept_empty_success() {
+        let result=section_case(vec![
+            (json!({"api":"SYNO.NoteStation.Todo","version":2,"method":"list","offset":0,"limit":200,"field":{"items":true}}),json!({"success":true,"data":{"items":[{"object_id":"todo-a","title":"Task","done":0,"items":[{"object_id":"child","done":true}]}],"total":1}})),
+            (json!({"api":"SYNO.NoteStation.Todo","version":2,"method":"get","object_id":"todo-a"}),json!({"success":true,"data":{"object_id":"todo-a","done":false}})),
+            (json!({"api":"SYNO.NoteStation.Todo","version":2,"method":"set","object_id":"todo-a","done":true}),json!({"success":true}))
+        ],|client|async move{let rows=client.todos().await?;assert_eq!(rows[0].items.len(),1);let result=client.set_todo_done(&rows[0].object_id,true,rows[0].done).await?;Ok(json!({"done":result.done}))}).unwrap();
+        assert_eq!(result, json!({"done":true}));
+    }
+    #[test]
+    fn changed_todo_is_not_overwritten() {
+        let result = section_case(
+            vec![(
+                json!({"method":"get","object_id":"todo-a"}),
+                json!({"success":true,"data":{"object_id":"todo-a","done":true}}),
+            )],
+            |client| async move {
+                client.set_todo_done("todo-a", true, false).await?;
+                Ok(Value::Null)
+            },
+        );
+        assert!(result.unwrap_err().contains("уже изменилось"));
+    }
+    #[test]
+    fn missing_or_null_todo_state_cannot_trigger_a_write() {
+        for state in [
+            json!({"object_id":"todo-a"}),
+            json!({"object_id":"todo-a","done":null}),
+        ] {
+            let result = section_case(
+                vec![(
+                    json!({"method":"get"}),
+                    json!({"success":true,"data":state}),
+                )],
+                |client| async move {
+                    client.set_todo_done("todo-a", true, false).await?;
+                    Ok(Value::Null)
+                },
+            );
+            assert!(result.unwrap_err().contains("не вернул состояние"));
+        }
+    }
+    #[test]
+    fn trash_listing_and_restore_preserve_access_without_deleting_or_rewriting_content() {
+        let result=section_case(vec![
+            (json!({"api":"SYNO.NoteStation.Note","version":3,"method":"list","filter":{"recycle":true}}),json!({"success":true,"data":{"notes":[{"object_id":"deleted","recycle":true,"perm_from":"shared-book"},{"object_id":"active","recycle":false}],"total":2}})),
+            (json!({"api":"SYNO.NoteStation.Note","version":3,"method":"restore","object_id":"deleted","perm_from":"shared-book"}),json!({"success":true}))
+        ],|client|async move{let notes=client.recycled_notes().await?;assert_eq!(notes.len(),1);client.restore_recycled_note(&notes[0].object_id,notes[0].access.clone()).await?;Ok(json!(notes[0].object_id))}).unwrap();
+        assert_eq!(result, json!("deleted"));
+    }
+    #[test]
+    fn tag_filter_handles_string_and_object_tags_and_excludes_trash() {
+        let result=section_case(vec![
+            (json!({"api":"SYNO.NoteStation.Tag","version":1,"method":"list"}),json!({"success":true,"data":{"tags":[{"tag_id":"tag-a","title":"Work"}],"total":1}})),
+            (json!({"api":"SYNO.NoteStation.Note","version":3,"method":"list","filter":{"recycle":false},"field":{"tag":true}}),json!({"success":true,"data":{"notes":[{"object_id":"a","tag":["tag-a"]},{"object_id":"b","tag":[{"tag_id":"tag-a"}]},{"object_id":"c","tag":["tag-other"]},{"object_id":"d","tag":["tag-a"],"recycle":true}],"total":4}}))
+        ],|client|async move{let tags=client.tags().await?;Ok(json!(client.notes_for_tag(&tags[0].tag_id).await?))}).unwrap();
+        assert_eq!(result.as_array().unwrap().len(), 2);
+    }
+    #[test]
+    fn shared_notes_carry_permission_context_through_preview() {
+        let result=section_case(vec![
+            (json!({"api":"SYNO.NoteStation.Notebook","version":2,"method":"list"}),json!({"success":true,"data":{"notebooks":[{"object_id":"shared-book","shared":1},{"object_id":"private-book"}],"total":2}})),
+            (json!({"api":"SYNO.NoteStation.Note","version":3,"method":"list","filter":{"parent_id":"shared-book","recycle":false},"perm_from":"shared-book"}),json!({"success":true,"data":{"notes":[{"object_id":"shared-note","parent_id":"shared-book"}],"total":1}})),
+            (json!({"api":"SYNO.NoteStation.Note","version":2,"method":"get","object_id":"shared-note","perm_from":"shared-book"}),json!({"success":true,"data":{"title":"Shared","content":"<p>Shared text</p>","ver":1}}))
+        ],|client|async move{let notes=client.shared_notes("shared-book").await?;let note=client.section_note(&notes[0].object_id,notes[0].access.clone()).await?;Ok(json!(note.title))}).unwrap();
+        assert_eq!(result, json!("Shared"));
+    }
+    #[test]
+    fn section_lists_keep_api_versions_and_offsets_across_pages() {
+        let first: Vec<Value> = (0..200)
+            .map(|index| json!({"tag_id":format!("tag-{index}"),"title":"Tag"}))
+            .collect();
+        let result=section_case(vec![
+            (json!({"api":"SYNO.NoteStation.Tag","version":1,"method":"list","offset":0,"limit":200}),json!({"success":true,"data":{"tags":first,"total":201}})),
+            (json!({"api":"SYNO.NoteStation.Tag","version":1,"method":"list","offset":200,"limit":200}),json!({"success":true,"data":{"tags":[{"tag_id":"last","title":"Last"}],"total":201}}))
+        ],|client|async move{let tags=client.tags().await?;Ok(json!(tags.len()))}).unwrap();
+        assert_eq!(result, json!(201));
+    }
+    #[test]
+    fn normal_library_excludes_recycled_notes_even_if_server_returns_them() {
+        let result=section_case(vec![(json!({"api":"SYNO.NoteStation.Note","version":3,"method":"list","filter":{"recycle":false}}),json!({"success":true,"data":{"notes":[{"object_id":"active"},{"object_id":"deleted","recycle":true}],"total":2}}))],|client|async move{Ok(json!(client.notes().await?))}).unwrap();
+        assert_eq!(result.as_array().unwrap().len(), 1);
+        assert_eq!(result[0]["object_id"], json!("active"));
+    }
+    #[test]
+    fn metadata_and_access_validation_do_not_guess_empty_tags_or_accept_invalid_flags() {
+        assert!(serde_json::from_value::<Todo>(json!({"object_id":"t","done":2})).is_err());
+        assert!(AccessContext {
+            perm_from: Some(json!({"url":"https://evil"})),
+            smart_id: None
+        }
+        .params()
+        .is_err());
+        assert!(!tag_matches(&json!(["other"]), "tag-a"));
+        let result = section_case(
+            vec![(
+                json!({"method":"list"}),
+                json!({"success":true,"data":{"notes":[{"object_id":"a"}],"total":1}}),
+            )],
+            |client| async move { Ok(json!(client.notes_for_tag("tag-a").await?)) },
+        );
+        assert!(result.unwrap_err().contains("не вернул сведения о тегах"));
+    }
 
     #[test]
     fn notebook_response_preserves_shelf_and_owner_without_requiring_them() {

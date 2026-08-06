@@ -318,6 +318,106 @@ async fn forget_account(
 }
 
 #[tauri::command]
+async fn list_todos(state: State<'_, AppState>) -> Result<Vec<synology::Todo>, String> {
+    let guard = state.0.lock().await;
+    guard.as_ref().ok_or("Войдите в NAS.")?.client.todos().await
+}
+#[tauri::command]
+async fn set_todo_done(
+    state: State<'_, AppState>,
+    id: String,
+    done: bool,
+    expected_done: bool,
+) -> Result<synology::TodoUpdate, String> {
+    let guard = state.0.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .set_todo_done(&id, done, expected_done)
+        .await
+}
+#[tauri::command]
+async fn list_tags(state: State<'_, AppState>) -> Result<Vec<synology::Tag>, String> {
+    let guard = state.0.lock().await;
+    guard.as_ref().ok_or("Войдите в NAS.")?.client.tags().await
+}
+#[tauri::command]
+async fn list_tag_notes(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<NoteSummary>, String> {
+    let guard = state.0.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .notes_for_tag(&id)
+        .await
+}
+#[tauri::command]
+async fn list_shared_notebooks(state: State<'_, AppState>) -> Result<Vec<Notebook>, String> {
+    let guard = state.0.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .shared_notebooks()
+        .await
+}
+#[tauri::command]
+async fn list_shared_notes(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<NoteSummary>, String> {
+    let guard = state.0.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .shared_notes(&id)
+        .await
+}
+#[tauri::command]
+async fn list_recycled_notes(state: State<'_, AppState>) -> Result<Vec<NoteSummary>, String> {
+    let guard = state.0.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .recycled_notes()
+        .await
+}
+#[tauri::command]
+async fn get_section_note(
+    state: State<'_, AppState>,
+    id: String,
+    context: synology::AccessContext,
+) -> Result<Note, String> {
+    let guard = state.0.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .section_note(&id, context)
+        .await
+}
+#[tauri::command]
+async fn restore_recycled_note(
+    state: State<'_, AppState>,
+    id: String,
+    context: synology::AccessContext,
+) -> Result<synology::SectionMutation, String> {
+    let guard = state.0.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .restore_recycled_note(&id, context)
+        .await
+}
+
+#[tauri::command]
 async fn list_notebooks(state: State<'_, AppState>) -> Result<Vec<Notebook>, String> {
     let guard = state.0.lock().await;
     guard
@@ -489,6 +589,15 @@ fn main() {
             restore_session,
             set_session_persistence,
             has_saved_session,
+            list_todos,
+            set_todo_done,
+            list_tags,
+            list_tag_notes,
+            list_shared_notebooks,
+            list_shared_notes,
+            list_recycled_notes,
+            get_section_note,
+            restore_recycled_note,
             list_notebooks,
             list_notes,
             get_note,

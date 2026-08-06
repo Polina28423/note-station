@@ -44,3 +44,20 @@ export const settingsStrings = Object.freeze({
   unverified: 'HTTPS · сертификат не проверяется',
   http: 'HTTP · без шифрования',
 });
+
+export const collectionStrings = Object.freeze({
+  titles: Object.freeze({todos:'Задачи',shared:'Общие блокноты',trash:'Корзина',tags:'Теги'}),
+  descriptions: Object.freeze({todos:'Задачи Note Station: просмотр и отметка выполнения.',shared:'Блокноты с признаками общего доступа, полученные от NAS.',trash:'Удалённые заметки. Восстановление возвращает их из корзины.',tags:'Выберите тег, чтобы увидеть связанные заметки.'}),
+  empty: Object.freeze({todos:'Задач пока нет.',shared:'Общих блокнотов не найдено.',trash:'Корзина пуста.',tags:'Тегов пока нет.'}),
+  loading:'Загрузка данных с NAS…', previewLoading:'Загрузка заметки…',
+  emptyNotes:'В этом разделе нет заметок.',noMatches:'По запросу ничего не найдено.',
+  untitled:'Без названия',back:'Назад к списку',restore:'Восстановить',
+  restoring:'Восстановление заметки…',restored:'Заметка восстановлена из корзины.',
+  savingTask:'Сохранение состояния задачи…',taskSaved:'Состояние задачи сохранено на NAS.',
+  openNote:'Открыть заметку',done:'Выполнено',open:'Не выполнено',
+  encrypted:'Зашифрованная заметка. Расшифровка пока не поддерживается.',
+  retryWrite:'Не удалось подтвердить изменение. Обновите список перед повторной попыткой.',
+  count: count=>`Загружено: ${count}`,
+  taskLabel: title=>`Изменить состояние задачи: ${title}`,
+  tagTitle:title=>`Тег: ${title}`,
+});

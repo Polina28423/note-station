@@ -1,3 +1,4 @@
+import { bindCollections } from './collections.js';
 import { bindSettingsTabs } from './settings.js';
 import { bindExternalLinks } from './links.js';
 import { bindSpelling } from './spelling.js';
@@ -33,6 +34,16 @@ const noteEditor = new NoteEditor({
 });
 bindSpelling({editor:noteEditor,invoke});
 let currentNote = null, selectedAccount = null;
+const collections=bindCollections({
+  invoke, prepare:async()=>!busy&&await noteEditor.leave(),
+  activate:()=>{clearReader();setView('collections');}, setBusy,
+  onRestored:async()=>{
+    try{
+      const [nextNotebooks,nextNotes]=await Promise.all([invoke('list_notebooks'),invoke('list_notes')]);
+      notebooks=nextNotebooks;notes=nextNotes;renderNotebooks();renderNotes();
+    }catch(error){status(`Заметка восстановлена. Не удалось обновить библиотеку: ${error}`,true);}
+  },
+});
 bindNoteHistory({
   invoke, getNote: () => currentNote, canOpen: () => !busy,
   leave: () => noteEditor.leave(), setBusy,
@@ -101,11 +112,13 @@ const make = (tag, className, text) => {
 };
 function setView(next) {
   view = next;
-  $('workspace').classList.toggle('overview-mode', view === 'notebooks');
+  if(view!=='collections')collections.leave();
+  $('collection-panel').hidden=view!=='collections';
+  $('workspace').classList.toggle('overview-mode', view !== 'notes');
   $('notebook-overview').hidden = view !== 'notebooks';
-  $('note-list-panel').hidden = view === 'notebooks';
-  $('reader').hidden = view === 'notebooks';
-  if (view === 'notebooks') setFocusMode(false);
+  $('note-list-panel').hidden = view !== 'notes';
+  $('reader').hidden = view !== 'notes';
+  if (view !== 'notes') setFocusMode(false);
   $('show-notebooks').classList.toggle('selected', view === 'notebooks');
   $('show-all-notes').classList.toggle('selected', view === 'notes' && !notebookId && !selectedShelf);
 }
@@ -186,6 +199,7 @@ function clearReader() {
   $('reader-breadcrumb').textContent = 'Заметка';
 }
 function reset() {
+  collections.reset();
   $('switch-account').hidden = true;
   notebooks = []; notes = []; notebookId = ''; selectedShelf = ''; collapsedShelves.clear(); pinned.clear(); clearReader();
   document.body.classList.remove('connected'); setFocusMode(false);
@@ -363,7 +377,7 @@ window.addEventListener('keydown', event => {
   if ($('workspace').hidden) return;
   if (event.key === 'Escape' && !noteEditor.active) setFocusMode(false);
   if (!noteEditor.active && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-    event.preventDefault(); (view === 'notebooks' ? $('notebook-search') : $('search')).focus();
+    event.preventDefault(); (view === 'notebooks' ? $('notebook-search') : view==='collections'?$('collection-search'):$('search')).focus();
   }
 });
 $('login-form').addEventListener('submit', async event => {
@@ -407,6 +421,7 @@ $('clear-certificate').addEventListener('click', () => {
 $('search').addEventListener('input', renderNotes);
 $('refresh').addEventListener('click', async () => {
   if (busy || !await noteEditor.leave()) return;
+  if(view==='collections'){collections.refresh();return;}
   setBusy(true); noteRequest++; status('Обновление библиотеки…');
   try {
     const [nextNotebooks, nextNotes] = await Promise.all([invoke('list_notebooks'), invoke('list_notes')]);
