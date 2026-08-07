@@ -42,7 +42,8 @@ module.exports=async function checkAppEditor(page,base){
   check(await page.locator('#note-content u').count()>0&&await page.locator('#note-content strike,#note-content s').count()>0&&await page.locator('#note-content i,#note-content em').count()>0,'all toolbar styles survive Editor.js save and reader rendering');
 
   await page.locator('#note-content').focus();await page.locator('#block-content .ce-paragraph').first().waitFor();
-  check(await page.evaluate(()=>!!document.activeElement.closest('#block-content')),'keyboard focus on the note body also opens editing');
+  await page.waitForFunction(()=>!!document.activeElement.closest('#block-content'));
+  check(true,'keyboard focus on the note body also opens editing');
   await page.evaluate(()=>{
     const p=document.querySelector('#block-content .ce-paragraph');p.focus();const walker=document.createTreeWalker(p,4),text=walker.nextNode();
     const range=document.createRange();range.setStart(text,0);range.setEnd(text,7);const selection=document.getSelection();selection.removeAllRanges();selection.addRange(range);

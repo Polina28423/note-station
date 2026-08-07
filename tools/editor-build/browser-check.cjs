@@ -42,6 +42,7 @@ async function main(){
     await require(path.join(root,'tests/typography-check.cjs'))(page,`http://127.0.0.1:${port}`);
     await require(path.join(root,'tests/links-check.cjs'))(page,`http://127.0.0.1:${port}`);
     await require(path.join(root,'tests/settings-check.cjs'))(page,`http://127.0.0.1:${port}`);
+    await require(path.join(root,'tests/collections-check.cjs'))(page,`http://127.0.0.1:${port}`);
     if(errors.length){console.error(errors);process.exitCode=1;}
   } finally {await browser?.close();server.kill();}
 }
