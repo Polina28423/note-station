@@ -58,7 +58,7 @@
       "label": "UI: test",
       "type": "process",
       "command": "node",
-      "args": ["--test", "tests/library.test.mjs", "tests/preferences.test.mjs", "tests/startup.test.mjs", "tests/editor-document.test.mjs"],
+      "args": ["--test", "tests/*.test.mjs"],
       "problemMatcher": [],
       "group": "test"
     },
