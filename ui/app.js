@@ -11,6 +11,19 @@ import { htmlToText, safeNoteFragment } from './content.js';
 import { loadConnection, saveConnection, loadEditorMode, saveEditorMode } from './preferences.js';
 
 const $ = id => document.getElementById(id);
+$('profile-settings').addEventListener('click', () => {
+  $('profile-menu').open = false;
+  $('open-settings').click();
+});
+document.addEventListener('click', event => {
+  if (!event.target.closest('#profile-menu')) $('profile-menu').open = false;
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && $('profile-menu').open) {
+    $('profile-menu').open = false;
+    $('profile-menu').querySelector('summary').focus();
+  }
+});
 const invoke = (command, args) => {
   if (!window.__TAURI__?.core?.invoke) throw new Error('Откройте приложение через start.ps1. В браузере доступен только макет интерфейса.');
   return window.__TAURI__.core.invoke(command, args);
@@ -444,6 +457,9 @@ async function showWorkspace(result) {
   notebooks = result.notebooks; notes = []; loadPins(info.server, info.account);
   document.body.classList.add('connected'); notebookId = ''; selectedShelf = ''; collapsedShelves.clear(); setView('notes');
   $('user-name').textContent = info.account; $('user-avatar').textContent = info.account.slice(0, 1).toUpperCase();
+  $('profile-server').textContent = new URL(info.server).host;
+  $('profile-server').title = info.server;
+  $('profile-menu').open = false;
   $('login-panel').hidden = true; $('workspace').hidden = false;
   $('startup-panel').hidden = true;
   $('refresh').hidden = false; $('logout').hidden = false;

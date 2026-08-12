@@ -1,4 +1,20 @@
 /* Compact Note Station workspace. Authentication keeps its own presentation. */
+.sidebar .navigation-group{flex-shrink:0}
+.sidebar .navigation-group>summary{padding:12px 14px 6px;font-size:12px;font-weight:600;cursor:pointer}
+.sidebar .navigation-group>.nav-button{padding-left:29px}
+.sidebar .sidebar-search{padding-top:0}
+.sidebar .sidebar-scroll>.nav-button{width:100%}
+.sidebar .sidebar-footer{flex-shrink:0;position:relative;display:block;margin:0;padding:0;background:#edf1f5;border-top:1px solid #c8d5e2;z-index:3}
+.sidebar .profile-menu>summary{display:flex;align-items:center;gap:9px;padding:13px 12px;cursor:pointer;list-style:none}
+.sidebar .profile-menu>summary::-webkit-details-marker{display:none}
+.sidebar .profile-identity{display:flex;flex-direction:column;flex:1;min-width:0;line-height:1.6}
+.sidebar .profile-identity strong,.sidebar .profile-identity span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.sidebar .profile-identity strong{font-size:12px;color:#505a64}
+.sidebar .profile-identity span{font-size:11px;color:#637585}
+.sidebar .profile-actions{position:absolute;bottom:100%;left:7px;right:7px;padding:5px;background:#fff;border:1px solid #c8d5e2;border-radius:4px;box-shadow:0 5px 20px #22384e20}
+.sidebar .profile-actions button{display:block;width:100%;text-align:left;border:0;border-radius:3px;background:transparent;padding:9px;font-size:12px;color:#505a64}
+.sidebar .profile-actions button:hover{background:#e9eff5}
+.sidebar .profile-menu>summary:focus-visible,.sidebar .navigation-group>summary:focus-visible{outline:2px solid #3799be;outline-offset:-2px}
 body.connected{font-family:Arial,"Segoe UI",sans-serif;color:#505a64;background:#fff}
 body.connected header{height:48px;padding:0 14px;background:#f5f6f8;border-bottom:1px solid #cfd8e2}
 body.connected .brand{font-size:16px;font-weight:600;gap:9px;color:#505a64}
