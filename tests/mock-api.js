@@ -22,6 +22,7 @@ function connected(remembered = true) {
 window.__TAURI__ = { core: { invoke: async (command, args) => {
   await new Promise(resolve => setTimeout(resolve, 20));
   if (command === 'list_accounts') return saved ? [connected().connection] : [];
+  if (command === 'switch_account') return null;
   if (command === 'has_saved_session') return saved;
   if (command === 'restore_session') {
     if (!saved) return null;
