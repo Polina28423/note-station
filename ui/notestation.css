@@ -1,4 +1,6 @@
 /* Compact Note Station workspace. Authentication keeps its own presentation. */
+body.connected header #connection,body.connected header #open-settings{display:none}
+.sidebar .profile-connection{margin:0;padding:8px 9px;font-size:11px;line-height:1.6;color:#637585;overflow-wrap:anywhere;border-bottom:1px solid #d7e1eb}
 .sidebar .navigation-group{flex-shrink:0}
 .sidebar .navigation-group>summary{padding:12px 14px 6px;font-size:12px;font-weight:600;cursor:pointer}
 .sidebar .navigation-group>.nav-button{padding-left:29px}

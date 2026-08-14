@@ -13,7 +13,7 @@ import { loadConnection, saveConnection, loadEditorMode, saveEditorMode } from '
 const $ = id => document.getElementById(id);
 $('profile-settings').addEventListener('click', () => {
   $('profile-menu').open = false;
-  $('open-settings').click();
+  openSettings();
 });
 document.addEventListener('click', event => {
   if (!event.target.closest('#profile-menu')) $('profile-menu').open = false;
@@ -93,9 +93,10 @@ noteBody.addEventListener('click',event=>{
 noteBody.addEventListener('focus',()=>{if(!bodyPointer&&editableNote())noteEditor.start(currentNote,{focusBody:true});});
 noteBody.addEventListener('keydown',event=>{if(event.target.closest?.('a'))return;if((event.key==='Enter'||event.key==='F2')&&editableNote()){event.preventDefault();noteEditor.start(currentNote,{focusBody:true});}});
 const settingsTabs=bindSettingsTabs({invoke});
-$('open-settings').addEventListener('click',()=>{
+function openSettings() {
   if(busy)return;$('editor-mode').value=preferredEditor;settingsTabs.reset();$('app-settings').showModal();
-});
+}
+$('open-settings').addEventListener('click',openSettings);
 $('cancel-settings').addEventListener('click',()=>$('app-settings').close());
 $('apply-settings').addEventListener('click',async()=>{
   const mode=$('editor-mode').value;$('app-settings').close();
@@ -466,6 +467,7 @@ async function showWorkspace(result) {
   $('restore-session').hidden = true; $('forget-session').hidden = true;
   updateSessionBadge(info);
   $('connection').textContent = info.server + (info.mode === 'strict' ? '' : info.mode === 'plain_http' ? ' · HTTP без шифрования' : ' · сертификат не проверяется');
+  $('profile-connection').textContent = $('connection').textContent;
   renderNotebooks(); clearReader(); renderNotes();
   try {
     notes = await invoke('list_notes'); renderNotebooks(); renderNotes();

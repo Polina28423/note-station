@@ -12,7 +12,7 @@
   <script type="module" src="app.js"></script>
 </head>
 <body>
-  <header><div class="brand"><span class="logo">N</span><div>Note Station<small id="header-caption">Ваше пространство для заметок</small></div></div><div class="toolbar"><span id="connection">Подключение…</span><button id="open-settings" type="button" title="Настройки приложения">⚙ Настройки</button><button id="session-state" hidden></button><button id="refresh" hidden title="Обновить блокноты и заметки">↻ Обновить</button></div></header>
+  <header><div class="brand"><span class="logo">N</span><div>Note Station<small id="header-caption">Ваше пространство для заметок</small></div></div><div class="toolbar"><span id="connection">Подключение…</span><button id="open-settings" type="button" title="Настройки приложения">⚙ Настройки</button><button id="refresh" hidden title="Обновить блокноты и заметки">↻ Обновить</button></div></header>
   <p id="status" role="status" aria-live="polite">Проверка сохранённой сессии…</p>
   <section id="startup-panel" aria-labelledby="startup-title" aria-busy="true">
     <span id="startup-spinner" class="startup-spinner" aria-hidden="true"></span>
@@ -52,7 +52,7 @@
       <div class="sidebar-footer">
         <details id="profile-menu" class="profile-menu">
           <summary aria-label="Профиль и действия аккаунта"><span id="user-avatar" class="user-avatar">N</span><span class="profile-identity"><strong id="user-name">Пользователь</strong><span id="profile-server">Подключено к NAS</span></span><span aria-hidden="true">⌃</span></summary>
-          <div class="profile-actions"><button id="profile-settings" type="button">Настройки</button><button id="switch-account" hidden>Сменить пользователя</button> <button id="logout" hidden title="Завершить сессию и удалить сохранённый вход">Выйти из аккаунта</button></div>
+          <div class="profile-actions"><p id="profile-connection" class="profile-connection"></p><button id="session-state" hidden></button><button id="profile-settings" type="button">Настройки</button><button id="switch-account" hidden>Сменить пользователя</button> <button id="logout" hidden title="Завершить сессию и удалить сохранённый вход">Выйти из аккаунта</button></div>
         </details>
       </div>
     </aside>
