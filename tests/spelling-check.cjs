@@ -28,7 +28,7 @@ module.exports = async function checkSpelling(page, base) {
     }, mode);
     await page.locator('#notes .note-row').first().click();
     await page.waitForFunction(() => document.getElementById('note-title').textContent === 'Заголовок helllo');
-    await page.locator('#open-settings').click();
+    await page.locator('#profile-menu summary').click();await page.locator('#profile-settings').click();
     await page.locator('#editor-mode').selectOption(mode);
     await page.locator('#apply-settings').click();
     await page.locator('#note-content p').first().click();

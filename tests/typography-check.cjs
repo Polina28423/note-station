@@ -5,7 +5,7 @@ module.exports=async function checkTypography(page,base){
   if(page.url().startsWith(base))await page.evaluate(()=>sessionStorage.removeItem('note-station-editor-fixture'));
   await page.goto(base+'/');await page.locator('.account-open').first().click();
   await page.locator('#notes .note-row').first().click();await page.waitForFunction(()=>document.getElementById('note-content').textContent.length>0);
-  await page.locator('#open-settings').click();await page.locator('#editor-mode').selectOption(mode);await page.locator('#apply-settings').click();
+  await page.locator('#profile-menu summary').click();await page.locator('#profile-settings').click();await page.locator('#editor-mode').selectOption(mode);await page.locator('#apply-settings').click();
   await page.locator('#note-content p').first().click();
   await page.waitForFunction(()=>!document.getElementById('format-font-family').disabled);
   const selectText=async()=>page.evaluate(mode=>{

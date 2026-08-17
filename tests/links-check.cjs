@@ -17,7 +17,7 @@ module.exports=async function checkLinks(page,base){
   await page.waitForFunction(()=>window.openedLinks.length===1);
   assert.equal(await page.locator('#note-editor').isVisible(),false);
   assert.equal(await page.evaluate(()=>window.openedLinks[0]),'https://example.org/old');
-  await page.locator('#open-settings').click();await page.locator('#editor-mode').selectOption(mode);await page.locator('#apply-settings').click();
+  await page.locator('#profile-menu summary').click();await page.locator('#profile-settings').click();await page.locator('#editor-mode').selectOption(mode);await page.locator('#apply-settings').click();
   await page.locator('#note-content p').first().click();await page.waitForFunction(()=>!document.getElementById('format-link').disabled);
   const choose=async existing=>page.evaluate(({mode,existing})=>{
    const root=mode==='blocks'?document.getElementById('block-content'):window.tinymce.get('edit-content').getBody();

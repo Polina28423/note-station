@@ -5,7 +5,7 @@ module.exports=async function checkAppEditor(page,base){
   const check=(condition,name)=>{assert.ok(condition,name);checks.push(name);console.log('PASS '+name);};
   const openNote=async()=>{await page.locator('#notes .note-row').first().click();await page.waitForFunction(()=>document.getElementById('note-content').textContent.length>0);};
   const openBlocks=async()=>{await page.locator('#note-content p').first().click();await page.locator('#block-content .ce-paragraph').first().waitFor();};
-  const settings=async mode=>{await page.locator('#open-settings').click();await page.locator('#editor-mode').selectOption(mode);await page.locator('#apply-settings').click();};
+  const settings=async mode=>{await page.locator('#profile-menu summary').click();await page.locator('#profile-settings').click();await page.locator('#editor-mode').selectOption(mode);await page.locator('#apply-settings').click();};
   await page.goto(base+'/');await page.locator('.account-open').first().click();await openNote();
   check(await page.locator('#edit-note').count()===0,'dedicated edit button is removed');
   await page.locator('#note-title').click();

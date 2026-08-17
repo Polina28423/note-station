@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict');
 module.exports=async function checkSettings(page,base){
  await page.goto(base+'/');await page.locator('.account-open').first().click();
- await page.locator('#open-settings').click();
+ await page.locator('#profile-menu summary').click();await page.locator('#profile-settings').click();
  assert.equal(await page.locator('#settings-editor-tab').getAttribute('aria-selected'),'true');
  assert.equal(await page.locator('#settings-editor-panel').isVisible(),true);
  assert.match(await page.locator('#settings-editor-panel').textContent(),/Editor.js/);
@@ -34,7 +34,7 @@ module.exports=async function checkSettings(page,base){
  await page.evaluate(()=>window.settingsError=true);await page.locator('#settings-sessions-refresh').click();await page.waitForFunction(()=>document.getElementById('settings-sessions-status').textContent.includes('Не удалось'));
  await page.evaluate(()=>{window.settingsError=false;window.settingsEmpty=true;});await page.locator('#settings-sessions-refresh').click();await page.waitForFunction(()=>document.getElementById('settings-sessions-status').textContent.includes('пока нет'));
  await page.keyboard.press('Escape');await page.locator('#app-settings').waitFor({state:'hidden'});
- await page.locator('#open-settings').click();assert.equal(await page.locator('#settings-editor-tab').getAttribute('aria-selected'),'true');
+ await page.locator('#profile-menu summary').click();await page.locator('#profile-settings').click();assert.equal(await page.locator('#settings-editor-tab').getAttribute('aria-selected'),'true');
  await page.locator('#cancel-settings').click();
  console.log('PASS settings tabs, keyboard, public saved sessions, errors, empty state, cancellation and viewport sizes');
 };
