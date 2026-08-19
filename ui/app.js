@@ -202,7 +202,7 @@ function status(message, error = false) {
 function setBusy(value) {
   busy = value;
   $('note-history').disabled = value || !currentNote || currentNote.encrypted;
-  for (const id of ['switch-account', 'add-account', 'back-to-accounts', 'startup-accounts', 'connect', 'refresh', 'logout', 'session-state', 'certificate', 'clear-certificate', 'connection-mode', 'insecure-confirm', 'remember-session', 'restore-session', 'forget-session', 'startup-retry', 'startup-login', 'startup-logout', 'open-settings']) $(id).disabled = value;
+  for (const id of ['switch-account', 'add-account', 'back-to-accounts', 'startup-accounts', 'connect', 'refresh', 'logout', 'certificate', 'clear-certificate', 'connection-mode', 'insecure-confirm', 'remember-session', 'restore-session', 'forget-session', 'startup-retry', 'startup-login', 'startup-logout', 'open-settings']) $(id).disabled = value;
 }
 function clearReader() {
   noteRequest++; selectedId = ''; copyText = ''; currentNote = null; noteEditor.close();
@@ -222,7 +222,7 @@ function reset() {
   $('workspace').hidden = true; $('login-panel').hidden = false;
   $('startup-panel').hidden = true;
   $('refresh').hidden = true; $('logout').hidden = true;
-  $('connection').textContent = 'Не подключён'; $('session-state').hidden = true; $('session-state').textContent = '';
+  $('connection').textContent = 'Не подключён';
   $('certificate').value = ''; $('certificate-status').textContent = ''; $('clear-certificate').hidden = true;
   $('connection-mode').value = 'strict'; updateConnectionMode();
 }
@@ -465,9 +465,8 @@ async function showWorkspace(result) {
   $('startup-panel').hidden = true;
   $('refresh').hidden = false; $('logout').hidden = false;
   $('restore-session').hidden = true; $('forget-session').hidden = true;
-  updateSessionBadge(info);
   $('connection').textContent = info.server + (info.mode === 'strict' ? '' : info.mode === 'plain_http' ? ' · HTTP без шифрования' : ' · сертификат не проверяется');
-  $('profile-connection').textContent = $('connection').textContent;
+  $('profile-server').title = $('connection').textContent;
   renderNotebooks(); clearReader(); renderNotes();
   try {
     notes = await invoke('list_notes'); renderNotebooks(); renderNotes();
@@ -488,7 +487,7 @@ function showSessionChecking() {
   $('startup-title').textContent = 'Открываем библиотеку';
   $('startup-detail').textContent = 'Подключаемся к NAS с сохранённой сессией…';
   $('startup-actions').hidden = true; $('connection').textContent = 'Подключение…';
-  for (const id of ['refresh','logout','session-state']) $(id).hidden = true;
+  for (const id of ['refresh','logout']) $(id).hidden = true;
   status('Восстановление сессии…');
 }
 function showLogin(error) {
@@ -508,22 +507,6 @@ function showSessionUnavailable(error) {
   $('connection').textContent = 'Нет подключения';
   status('Сохранённая сессия остаётся на компьютере. Можно повторить подключение.', true);
 }
-function updateSessionBadge(info) {
-  $('session-state').hidden = false;
-  $('session-state').dataset.remembered = String(info.remembered);
-  $('session-state').textContent = info.remembered ? 'Сессия сохранена' : 'Сохранить сессию';
-  $('session-state').title = info.remembered ? 'Нажмите, чтобы отключить автоматический вход на этом компьютере. Для полного выхода используйте «Выйти из аккаунта».' : 'Сохранить текущую сессию для входа после перезапуска.';
-}
-$('session-state').addEventListener('click', async () => {
-  if (busy) return;
-  setBusy(true);
-  try {
-    const info = await invoke('set_session_persistence', { remember: $('session-state').dataset.remembered !== 'true' });
-    updateSessionBadge(info);
-    status(info.remembered ? 'Сессия сохранена для следующего запуска.' : 'Автоматический вход отключён. Текущая сессия продолжает работать.');
-  } catch(error) { status(String(error), true); }
-  finally { setBusy(false); }
-});
 async function signOut() {
   if (busy || !await noteEditor.leave()) return;
   setBusy(true); clearReader(); status('Выход из аккаунта…');

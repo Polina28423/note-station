@@ -1,6 +1,5 @@
 /* Compact Note Station workspace. Authentication keeps its own presentation. */
 body.connected header #connection,body.connected header #open-settings{display:none}
-.sidebar .profile-connection{margin:0;padding:8px 9px;font-size:11px;line-height:1.6;color:#637585;overflow-wrap:anywhere;border-bottom:1px solid #d7e1eb}
 .sidebar .navigation-group{flex-shrink:0}
 .sidebar .navigation-group>summary{padding:12px 14px 6px;font-size:12px;font-weight:600;cursor:pointer}
 .sidebar .navigation-group>.nav-button{padding-left:29px}
@@ -14,7 +13,7 @@ body.connected header #connection,body.connected header #open-settings{display:n
 .sidebar .profile-identity strong{font-size:12px;color:#505a64}
 .sidebar .profile-identity span{font-size:11px;color:#637585}
 .sidebar .profile-actions{position:absolute;bottom:100%;left:7px;right:7px;padding:5px;background:#fff;border:1px solid #c8d5e2;border-radius:4px;box-shadow:0 5px 20px #22384e20}
-.sidebar .profile-actions button{display:block;width:100%;text-align:left;border:0;border-radius:3px;background:transparent;padding:9px;font-size:12px;color:#505a64}
+.sidebar .profile-actions button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:0;border-radius:3px;background:transparent;padding:9px;font-size:12px;color:#505a64}
 .sidebar .profile-actions button:hover{background:#e9eff5}
 .sidebar .profile-menu>summary:focus-visible,.sidebar .navigation-group>summary:focus-visible{outline:2px solid #3799be;outline-offset:-2px}
 body.connected{font-family:Arial,"Segoe UI",sans-serif;color:#505a64;background:#fff}
@@ -172,7 +171,6 @@ button.shelf-overview-heading:hover{color:#169fc9;background:transparent}
 .shelf-overview-heading .muted{margin-left:8px;font-size:11px;font-weight:normal}
 .shelf-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
 .shelf-toggle,.shelf-select{margin:0}
-#session-state{font-size:10px;white-space:nowrap;color:#5b93ac;border:1px solid #d5e5ed;border-radius:3px;padding:4px 7px;background:#f4f9fc}
 body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 #login-form .remember-label{display:flex;align-items:center;gap:8px;font-size:12px;margin:16px 0 4px}
 #login-form .remember-label input{width:14px;height:14px;min-height:0;padding:0;margin:0;accent-color:#169fd0;flex-shrink:0}
@@ -180,7 +178,7 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 .saved-session-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 #login-form .saved-session-actions button{font-size:11px;padding:7px 10px;border:1px solid #cbd6e2;border-radius:3px;background:#f8fafc;color:#6d8193;flex:1}
 .saved-session-actions:empty{display:none}
-@media(max-width:1000px){body.connected #connection{max-width:180px}#session-state{font-size:9px;padding:4px}}
+@media(max-width:1000px){body.connected #connection{max-width:180px}}
 #note-editor{display:flex;flex-direction:column;min-height:0;flex:1;background:#fff;overflow:hidden}
 .edit-heading{padding:16px 20px 10px;border-bottom:1px solid #d7e1eb}
 .edit-heading label{font-size:11px;font-weight:normal;color:#8493a0;margin:0 0 6px}
@@ -391,3 +389,5 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 .collection-nav{flex-shrink:0}
 
 .collection-item strong{font-size:13px;font-weight:600}
+
+.sidebar .profile-actions .profile-icon{width:16px;height:16px;flex-shrink:0;color:#637585}
