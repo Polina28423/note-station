@@ -12,8 +12,8 @@ module.exports = async (page, base) => {
     const profile = page.locator('#profile-menu summary');
     await profile.click();
     await page.locator('#profile-settings').waitFor({state:'visible'});
-    assert.equal(await page.locator('#session-state').isVisible(), true);
-    assert.ok((await page.locator('#profile-connection').textContent()).includes('https://'));
+    assert.equal(await page.locator('#session-state, #profile-connection').count(), 0);
+    assert.equal(await page.locator('.profile-actions button svg').count(), 3);
     const bounds = await profile.boundingBox();
     assert(bounds.y + bounds.height <= 600, 'Profile must remain visible below the scrolling tree');
     const actions = await page.locator('.profile-actions').boundingBox();
