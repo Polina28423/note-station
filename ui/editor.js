@@ -1,4 +1,4 @@
-import { spellingStrings, typographyStrings, linkStrings } from './strings.js';
+import { spellingStrings, typographyStrings, linkStrings, pasteStrings } from './strings.js';
 import { snapshotIsCurrent, selectionInSnapshot } from './spelling-adapter.js';
 import { htmlToText } from './content.js';
 import { ClassicSurface } from './classic-editor.js';
@@ -15,6 +15,17 @@ export class NoteEditor {
     $('cancel-edit').addEventListener('click',()=>this.leave());
     $('editor-undo').addEventListener('click',()=>this.travel('undo'));
     $('editor-redo').addEventListener('click',()=>this.travel('redo'));
+    this.pastePlain=false;
+    const pasteButton=$('paste-plain');
+    pasteButton.setAttribute('aria-label',pasteStrings.label);
+    pasteButton.title=pasteStrings.formatted;
+    pasteButton.addEventListener('pointerdown',event=>event.preventDefault());
+    pasteButton.addEventListener('click',()=>{
+      this.pastePlain=!this.pastePlain;
+      if(this.surface)this.surface.pastePlain=this.pastePlain;
+      pasteButton.setAttribute('aria-pressed',String(this.pastePlain));
+      pasteButton.title=this.pastePlain?pasteStrings.plain:pasteStrings.formatted;
+    });
     const formatting=$('editor-formatting');
     formatting.addEventListener('pointerdown',e=>{if(e.target.closest('button'))e.preventDefault();});
     formatting.addEventListener('mousedown',e=>{if(e.target.closest('button'))e.preventDefault();});
@@ -111,6 +122,7 @@ export class NoteEditor {
     const create=()=>{
       $('block-content').hidden=this.mode!=='blocks';$('classic-surface').hidden=this.mode!=='classic';
       this.surface=this.mode==='blocks'?new BlockSurface((error,changed)=>this.change(error,changed),this.openExternal,this.status):new ClassicSurface(()=>this.change(),()=>this.updateFormatting(),this.openExternal,this.status,()=>this.openLink());
+      this.surface.pastePlain=this.pastePlain;
     };
     create();
     try {await this.surface.load(note);}
@@ -125,6 +137,7 @@ export class NoteEditor {
   update(){
     $('edit-state').textContent=this.saving?'Сохранение…':this.opening?'Открытие редактора…':this.dirty()?'Есть несохранённые изменения':'Нет изменений';
     const locked=this.saving||this.opening||this.historyBusy||this.checking;
+    $('paste-plain').disabled=locked||!this.active;
     const spellingButton=$('check-spelling');if(spellingButton)spellingButton.disabled=locked||!this.active||!this.surface?.spellingSnapshot;
     $('save-note').disabled=locked||!this.dirty();$('cancel-edit').disabled=locked;
     $('editor-undo').disabled=locked;$('editor-redo').disabled=locked;

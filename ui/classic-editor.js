@@ -29,6 +29,16 @@ export class ClassicSurface {
       },
     });
     this.editor = editors[0];
+    this.editor.getBody().addEventListener('paste',event=>{
+      if(!this.pastePlain||!event.clipboardData)return;
+      event.preventDefault();event.stopImmediatePropagation();
+      const text=event.clipboardData.getData('text/plain');
+      if(!text)return;
+      const escaped=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\r\n?/g,'\n').replace(/\n/g,'<br>');
+      this.editor.undoManager.add();
+      this.editor.undoManager.transact(()=>this.editor.insertContent(escaped));
+      this.update();
+    },true);
     this.editor.addShortcut('meta+k','Добавить или изменить ссылку',()=>this.editLink());
     this.unbindLinks=bindExternalLinks(this.editor.getBody(),this.openExternal,this.linkError);
   }

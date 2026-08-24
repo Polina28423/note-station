@@ -61,3 +61,8 @@ export const collectionStrings = Object.freeze({
   taskLabel: title=>`Изменить состояние задачи: ${title}`,
   tagTitle:title=>`Тег: ${title}`,
 });
+export const pasteStrings = Object.freeze({
+  label: 'Вставлять без форматирования',
+  plain: 'Вставка без форматирования включена',
+  formatted: 'Вставка с форматированием включена',
+});

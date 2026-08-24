@@ -67,6 +67,17 @@ export class BlockSurface {
     this.unbindLinks=bindExternalLinks(holder,this.openExternal,this.linkError);
     this.onPaste=event=>{
       if(!this.ready)return;
+      if(this.pastePlain&&event.clipboardData){
+        event.preventDefault();event.stopImmediatePropagation();
+        const text=event.clipboardData.getData('text/plain');
+        if(text){
+          const escaped=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\r\n?/g,'\n').replace(/\n/g,'<br>');
+          const plainField=event.target.matches?.('textarea,input');
+          document.execCommand(plainField?'insertText':'insertHTML',false,plainField?text:escaped);
+          this.notify();this.scheduleHistory();
+        }
+        return;
+      }
       const html=event.clipboardData?.getData('text/html');
       if(!html)return;
       try {
