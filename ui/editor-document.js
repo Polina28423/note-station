@@ -237,7 +237,9 @@ export class EditorDocument {
       const record=this.records.get(block.id);
       if(record&&blockSignature(block)===record.baseline)return record.prefix+record.source;
       if(block.type==='preserved')return (record?.prefix || '')+this.fragments.get(block.data.key);
-      return (record?.prefix || '')+renderBlock(block);
+      let rendered=renderBlock(block);
+      if(block.type==='paragraph'&&/^\s*<div[\s>]/i.test(record?.source || ''))rendered=rendered.replace(/^<p(?=[\s>])/,'<div').replace(/<\/p>$/,'</div>');
+      return (record?.prefix || '')+rendered;
     }).join('')+this.tail;
   }
 }

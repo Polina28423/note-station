@@ -19,7 +19,7 @@ export class ClassicSurface {
       paste_data_images: false, automatic_uploads: false,
       noneditable_class: 'mceNonEditable',
       content_security_policy: "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';",
-      content_style: 'body{font:15px/1.7 Arial,sans-serif;color:#505a64;margin:20px} .mceNonEditable{display:inline-block;padding:8px 12px;background:#edf3f8;border:1px solid #cfdae5;color:#7a8a99;border-radius:3px} table{border-collapse:collapse} td,th{border:1px solid #d7e1eb;padding:8px}',
+      content_style: 'body{font:15px/1.7 Arial,sans-serif;color:#505a64;margin:20px} a{color:#176b94;text-decoration:underline;overflow-wrap:anywhere} .mceNonEditable{display:inline-block;padding:8px 12px;background:#edf3f8;border:1px solid #cfdae5;color:#7a8a99;border-radius:3px} table{border-collapse:collapse} td,th{border:1px solid #d7e1eb;padding:8px}',
       contextmenu: false,
       setup: editor => {
         editor.ui.registry.addButton('noteLink',{icon:'link',tooltip:'Ссылка',onAction:()=>this.editLink()});

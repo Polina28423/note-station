@@ -40,7 +40,11 @@ export class BlockSurface {
       save(){return {...this.data};}
       validate(data){return typeof data.key==='string';}
     }
-    class Paragraph extends lib.Paragraph {static get sanitize(){return {text:INLINE_RULES};}}
+    class Paragraph extends lib.Paragraph {
+      static get sanitize(){return {text:INLINE_RULES};}
+      constructor(options){super(options);this.source=surface.document.records.get(options.block.id)?.source || '<p>';}
+      render(){const element=super.render();element.dataset.sourceTag=/^\s*<div[\s>]/i.test(this.source)?'div':'p';return element;}
+    }
     class Header extends lib.Header {static get sanitize(){return {text:INLINE_RULES,level:false};}}
     class Quote extends lib.Quote {static get sanitize(){return {text:INLINE_RULES,caption:INLINE_RULES,alignment:false};}renderSettings(){return [];}}
     function inlineFormat(command,label,tag,rules) {
