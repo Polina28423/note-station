@@ -1,0 +1,38 @@
+const assert = require('node:assert/strict');
+module.exports = async (page, base) => {
+  await page.goto(base + '/');
+  await page.locator('.account-open').first().click();
+  const result = await page.evaluate(async () => {
+    const { BlockSurface } = await import('/block-editor.js');
+    const { safeNoteFragment } = await import('/content.js');
+    const html='<div>Описание</div><div><a href="https://example.org/one">Первая ссылка</a></div><div><br></div><div>Ещё описание</div><div><a href="https://example.org/two">Вторая ссылка</a></div><p>Отдельный абзац</p>';
+    const reader=document.getElementById('note-content');reader.replaceChildren(safeNoteFragment(html));
+    document.getElementById('reader-empty').hidden=true;document.getElementById('reader-document').hidden=false;
+    const gaps = elements => {const top=elements[0].getBoundingClientRect().top;return elements.map(el=>el.getBoundingClientRect().top-top);};
+    const before=gaps([...reader.children]);
+    const color=getComputedStyle(reader.querySelector('a')).color;
+    document.getElementById('note-editor').hidden=false;
+    const surface=new BlockSurface(()=>{});await surface.load({content:html});
+    const paragraphs=[...document.querySelectorAll('#block-content .ce-paragraph')];
+    const after=gaps(paragraphs);
+    const editorColor=getComputedStyle(document.querySelector('#block-content a')).color;
+    const state=await surface.content();
+    const unchanged=surface.output(state.data,state.removed);
+    surface.destroy();
+    const { ClassicSurface } = await import('/classic-editor.js');
+    document.getElementById('block-content').hidden=true;
+    document.getElementById('classic-surface').hidden=false;
+    const classic=new ClassicSurface(()=>{});await classic.load({content:html});
+    const classicColor=classic.editor.getWin().getComputedStyle(classic.editor.getBody().querySelector('a')).color;
+    const classicGaps=gaps([...classic.editor.getBody().children]);
+    classic.destroy();
+    return {before,after,classicGaps,color,editorColor,classicColor,source:html,unchanged};
+  });
+  assert.equal(result.color,result.editorColor);
+  assert.equal(result.color,result.classicColor);
+  assert.equal(result.before.length,result.after.length);
+  result.before.forEach((value,index)=>assert.ok(Math.abs(value-result.after[index])<2,`Block ${index}: reader ${value}, editor ${result.after[index]}`));
+  result.before.forEach((value,index)=>assert.ok(Math.abs(value-result.classicGaps[index])<2,`Classic block ${index}: reader ${value}, editor ${result.classicGaps[index]}`));
+  assert.equal(result.unchanged,result.source);
+  console.log('PASS reader and block editor link colors, div/p/blank-line spacing and unchanged HTML');
+};

@@ -5,6 +5,12 @@ import { normalizeColor, safeStyles, normalizeFontFamily, normalizeFontSize } fr
 const load = html => { const doc=new EditorDocument(html);doc.bindBaseline(doc.blocks);return doc; };
 const clone = value => structuredClone(value);
 
+test('editing a div line retains div layout instead of adding paragraph margins',()=>{
+  const doc=load('<div>Before</div><div><br></div><div>Next</div>');
+  const blocks=clone(doc.blocks);blocks[0].data.text='After';
+  assert.equal(doc.serialize(blocks),'<div>After</div><div><br></div><div>Next</div>');
+});
+
 test('unchanged HTML, whitespace and comments are retained byte-for-byte',()=>{
   const html='<!-- metadata -->\r\n<P>Text &amp; <b>bold</b></P>\n<p></p>\r\n';
   const doc=load(html);assert.equal(doc.serialize(doc.blocks),html);
