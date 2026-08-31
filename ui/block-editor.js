@@ -68,6 +68,26 @@ export class BlockSurface {
       checkState(){return false;}
     }
     const holder=$('block-content');holder.replaceChildren();
+    this.onEnter=event=>{
+      if(!this.ready||event.key!=='Enter'||event.isComposing||event.keyCode===229||event.altKey)return;
+      const target=event.target.closest?.('[contenteditable="true"],textarea');
+      if(!target||!holder.contains(target))return;
+      if(holder.querySelector('.ce-popover--opened'))return;
+      const block=this.editor.blocks.getBlockByElement(target);
+      if(!block)return;
+      if(event.ctrlKey||event.metaKey){
+        event.preventDefault();event.stopImmediatePropagation();
+        const index=this.editor.blocks.getCurrentBlockIndex()+1;
+        const next=this.editor.blocks.insert('paragraph',{text:''},{},index,true);
+        this.editor.caret.setToBlock(next.id,'start');
+        this.notify();this.scheduleHistory();
+      }else if(!target.matches('textarea')&&!target.closest('.cdx-list')){
+        event.preventDefault();event.stopImmediatePropagation();
+        document.execCommand('insertLineBreak');
+        this.notify();this.scheduleHistory();
+      }
+    };
+    holder.addEventListener('keydown',this.onEnter,true);
     this.unbindLinks=bindExternalLinks(holder,this.openExternal,this.linkError);
     this.onPaste=event=>{
       if(!this.ready)return;
@@ -267,5 +287,5 @@ export class BlockSurface {
     }
     await this.capture();
   }
-  destroy(){this.ready=false;clearTimeout(this.timer);const holder=$('block-content');this.unbindLinks?.();holder.removeEventListener('paste',this.onPaste,true);this.editor?.destroy?.();this.editor=null;this.history=[];this.document=null;}
+  destroy(){this.ready=false;clearTimeout(this.timer);const holder=$('block-content');this.unbindLinks?.();holder.removeEventListener('keydown',this.onEnter,true);holder.removeEventListener('paste',this.onPaste,true);this.editor?.destroy?.();this.editor=null;this.history=[];this.document=null;}
 }
