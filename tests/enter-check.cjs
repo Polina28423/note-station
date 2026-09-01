@@ -1,0 +1,36 @@
+const assert=require('node:assert/strict');
+module.exports=async(page,base)=>{
+  await page.goto(base+'/');await page.locator('.account-open').first().click();
+  await page.locator('#notes .note-row').first().waitFor();
+  await page.evaluate(async()=>{
+    const {BlockSurface}=await import('/block-editor.js');
+    document.getElementById('reader-empty').hidden=true;
+    document.getElementById('reader-document').hidden=true;
+    document.getElementById('note-editor').hidden=false;
+    window.enterSurface=new BlockSurface(()=>{});
+    await window.enterSurface.load({content:'<p>First</p><ul><li>Item</li></ul>'});
+    const p=document.querySelector('#block-content .ce-paragraph');p.focus();
+    const range=document.createRange();range.selectNodeContents(p);range.collapse(false);
+    const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+  });
+  await page.locator('#block-content .ce-paragraph').first().click();await page.keyboard.press('End');
+  await page.keyboard.press('Enter');await page.keyboard.type('Second');
+  assert.equal(await page.locator('#block-content .ce-block').count(),2);
+  assert.ok((await page.locator('#block-content .ce-paragraph').first().innerHTML()).includes('<br>'),await page.locator('#block-content').innerHTML());
+  await page.keyboard.press('Shift+Enter');await page.keyboard.type('Third');
+  assert.equal(await page.locator('#block-content .ce-block').count(),2);
+  await page.keyboard.press('Control+Enter');await page.keyboard.type('New block');
+  assert.equal(await page.locator('#block-content .ce-block').count(),3);
+  assert.equal(await page.locator('#block-content .ce-paragraph').nth(1).textContent(),'New block');
+  await page.evaluate(async()=>{await window.enterSurface.capture();await window.enterSurface.undo();});
+  assert.equal(await page.locator('#block-content .ce-block').count(),2);
+  await page.evaluate(()=>window.enterSurface.redo());
+  assert.equal(await page.locator('#block-content .ce-block').count(),3);
+  await page.locator('#block-content .cdx-list__item-content').first().click();
+  await page.keyboard.press('End');await page.keyboard.press('Enter');await page.keyboard.type('Next item');
+  assert.equal(await page.locator('#block-content .cdx-list__item-content').count(),2);
+  const html=await page.evaluate(async()=>{const s=await window.enterSurface.content();return window.enterSurface.output(s.data,s.removed);});
+  assert.match(html,/First<br>Second<br>Third/);assert.match(html,/New block/);assert.match(html,/Next item/);
+  await page.evaluate(()=>window.enterSurface.destroy());
+  console.log('PASS Enter/Shift+Enter line breaks, Ctrl+Enter new block, undo/redo, lists and serialized HTML');
+};

@@ -41,7 +41,7 @@ module.exports=async function checkLinks(page,base){
   },mode);
   await links().filter({hasText:'выделенный текст'}).click();await page.waitForFunction(()=>window.openedLinks.length===2);
   assert.equal(await page.evaluate(()=>window.openedLinks.at(-1)),'https://example.org/new');
-  await choose(true);await page.keyboard.press('Control+Enter');await page.waitForFunction(()=>window.openedLinks.length===3);
+  if(mode==='classic'){await choose(true);await page.keyboard.press('Control+Enter');await page.waitForFunction(()=>window.openedLinks.length===3);}
   await choose(true);await page.keyboard.press('Control+k');await page.locator('#format-link-dialog').waitFor({state:'visible'});
   await page.locator('#format-link-url').fill('https://example.org/changed');await page.locator('#format-link-text').fill('Новый сайт');
   await page.locator('#format-link-form button[type="submit"]').click();await page.locator('#format-link-dialog').waitFor({state:'hidden'});
