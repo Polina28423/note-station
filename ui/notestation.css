@@ -53,8 +53,6 @@ body.connected #status.error{background:#fff0eb;color:#a14335}
 .sidebar-search input{font-size:12px;background:#fff;border:1px solid #cfd9e3;border-radius:3px;padding:7px 9px}
 .sidebar-scroll{padding:0 0 12px;scrollbar-color:#c6d0da transparent}
 .sidebar-scroll .section-title{padding:14px 14px 8px}
-.tree-heading{display:block;width:100%;border:0;border-radius:0;text-align:left;padding:12px 13px 8px;background:transparent;font-size:12px;font-weight:bold;color:#505a64}
-.tree-heading span{display:inline-block;width:16px;color:#8b9aaa}
 .notebook-row{border-radius:0;padding:7px 14px 7px 29px;gap:8px;margin:0;font-size:12px;color:#505a64;min-height:34px}
 .sidebar .notebook-row:hover{background:#e9eff5}
 .sidebar .notebook-row.selected{background:#00b8e6;color:#fff;font-weight:400}

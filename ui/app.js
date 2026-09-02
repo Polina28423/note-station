@@ -133,7 +133,6 @@ function setView(next) {
   $('note-list-panel').hidden = view !== 'notes';
   $('reader').hidden = view !== 'notes';
   if (view !== 'notes') setFocusMode(false);
-  $('show-notebooks').classList.toggle('selected', view === 'notebooks');
   $('show-all-notes').classList.toggle('selected', view === 'notes' && !notebookId && !selectedShelf);
 }
 function setFocusMode(enabled) {
@@ -233,7 +232,6 @@ function renderNotebooks() {
   // Labels stay stable when search hides another owner's equally named shelf.
   const labels = new Map(allShelves.map(s => [s.key, s.label]));
   $('library-count').textContent = notebooks.length;
-  $('notebook-total').textContent = notebooks.length;
   $('note-total').textContent = notes.length;
   $('overview-summary').textContent = `${notebookCountLabel(notebooks.length)} · Полок: ${allShelves.length} · ${noteCountLabel(notes.length)}`;
   $('notebooks').replaceChildren(); $('pinned-notebooks').replaceChildren(); $('notebook-grid').replaceChildren();
@@ -374,7 +372,6 @@ async function openNote(id) {
     $('note-title').textContent = 'Не удалось открыть заметку'; status(String(error), true);
   }
 }
-$('show-notebooks').addEventListener('click', async () => { if (!busy && await noteEditor.leave()) { setView('notebooks'); renderNotebooks(); } });
 $('show-all-notes').addEventListener('click', () => chooseNotebook(''));
 $('notebook-search').addEventListener('input', renderNotebooks);
 $('notebook-sort').addEventListener('change', renderNotebooks);
@@ -568,12 +565,6 @@ $('switch-account').addEventListener('click', async () => {
 });
 
 bindPanelResizing($('workspace'));
-$('toggle-notebooks').addEventListener('click', () => {
-  const expanded = $('toggle-notebooks').getAttribute('aria-expanded') !== 'true';
-  $('toggle-notebooks').setAttribute('aria-expanded', String(expanded));
-  $('tree-arrow').textContent = expanded ? '▾' : '▸';
-  $('notebooks').hidden = !expanded;
-});
 
 showAccounts();
 
