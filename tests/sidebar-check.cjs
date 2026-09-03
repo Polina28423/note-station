@@ -4,6 +4,12 @@ module.exports = async (page, base) => {
   await page.goto(base + '/');
   await page.locator('.account-open').first().click();
   await page.locator('#workspace').waitFor({state:'visible'});
+  assert.equal(await page.locator('#show-notebooks').count(),0);
+  await page.locator('#notebooks .notebook-row').first().waitFor();
+  await page.locator('#toggle-notebooks').click();
+  assert.equal(await page.locator('#notebooks').isVisible(),false);
+  await page.locator('#toggle-notebooks').focus();await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#notebooks').isVisible(),true);
   assert.equal(await page.locator('header #open-settings').isVisible(), false);
   assert.equal(await page.locator('header #connection').isVisible(), false);
   assert.equal(await page.locator('header #session-state').count(), 0);
