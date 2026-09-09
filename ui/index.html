@@ -64,6 +64,11 @@
     </section>
     <section id="collection-panel" hidden aria-labelledby="collection-title">
       <div class="collection-heading"><div><h1 id="collection-title"></h1><p id="collection-description" class="muted"></p></div><button id="collection-refresh" type="button">Обновить</button></div>
+      <form id="todo-create-form" hidden aria-label="Новая задача">
+        <div class="todo-create-row"><label class="sr-only" for="todo-title">Название новой задачи</label><input id="todo-title" name="title" required maxlength="250" placeholder="Новая задача…" autocomplete="off"><button id="todo-create-submit" type="submit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Добавить</button></div>
+        <details id="todo-details"><summary>Срок и привязка к заметке</summary><div class="todo-create-fields"><label for="todo-due">Срок<input id="todo-due" name="due" type="date" min="1970-01-01" max="9999-12-31"></label><label for="todo-note">Связанная заметка<select id="todo-note" name="note"><option value="">Без привязки</option></select></label></div></details>
+        <p class="todo-create-hint">Enter — добавить задачу</p>
+      </form>
       <div class="collection-controls"><button id="collection-back" type="button" hidden>Назад</button><label class="sr-only" for="collection-search">Поиск в разделе</label><input id="collection-search" type="search" placeholder="Поиск в разделе…"><label class="sr-only" for="collection-filter">Состояние задач</label><select id="collection-filter" hidden><option value="all">Все задачи</option><option value="open">Невыполненные</option><option value="done">Выполненные</option></select></div>
       <p id="collection-status" role="status" aria-live="polite"></p>
       <div class="collection-content"><div id="collection-list" aria-label="Элементы раздела"></div><section id="collection-preview" aria-label="Просмотр заметки" hidden><div class="collection-preview-heading"><h2 id="collection-preview-title"></h2><span class="collection-readonly">Только просмотр</span></div><div id="collection-preview-body" class="note-prose"></div></section></div>

@@ -47,7 +47,7 @@ export const settingsStrings = Object.freeze({
 
 export const collectionStrings = Object.freeze({
   titles: Object.freeze({todos:'Задачи',shared:'Общие блокноты',trash:'Корзина',tags:'Теги'}),
-  descriptions: Object.freeze({todos:'Задачи Note Station: просмотр и отметка выполнения.',shared:'Блокноты с признаками общего доступа, полученные от NAS.',trash:'Удалённые заметки. Восстановление возвращает их из корзины.',tags:'Выберите тег, чтобы увидеть связанные заметки.'}),
+  descriptions: Object.freeze({todos:'Создавайте задачи и отмечайте выполненные.',shared:'Блокноты с признаками общего доступа, полученные от NAS.',trash:'Удалённые заметки. Восстановление возвращает их из корзины.',tags:'Выберите тег, чтобы увидеть связанные заметки.'}),
   empty: Object.freeze({todos:'Задач пока нет.',shared:'Общих блокнотов не найдено.',trash:'Корзина пуста.',tags:'Тегов пока нет.'}),
   loading:'Загрузка данных с NAS…', previewLoading:'Загрузка заметки…',
   emptyNotes:'В этом разделе нет заметок.',noMatches:'По запросу ничего не найдено.',
@@ -60,6 +60,11 @@ export const collectionStrings = Object.freeze({
   count: count=>`Загружено: ${count}`,
   taskLabel: title=>`Изменить состояние задачи: ${title}`,
   tagTitle:title=>`Тег: ${title}`,
+  noNote:'Без привязки',missingNote:'Заметка недоступна — выберите другую',
+  invalidTitle:'Введите название задачи от 1 до 250 символов.',invalidDate:'Выберите корректную дату с 1970 по 9999 год.',
+  creating:'Создание задачи на NAS…',created:'Задача создана на NAS.',
+  createUncertain:'Не удалось подтвердить создание. Сначала обновите список и проверьте, появилась ли задача, чтобы не создать дубликат.',
+  createdRefreshFailed:'Задача создана, но список не удалось обновить. Обновите его перед добавлением следующей задачи.',
 });
 export const pasteStrings = Object.freeze({
   label: 'Вставлять без форматирования',

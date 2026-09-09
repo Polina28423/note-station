@@ -181,6 +181,32 @@ pub struct TodoUpdate {
     pub done: bool,
     pub notice: Option<String>,
 }
+#[derive(Serialize)]
+pub struct TodoCreated {
+    pub object_id: Option<String>,
+}
+fn todo_create_params(
+    title: &str,
+    due_date: Option<i64>,
+    note_id: Option<&str>,
+) -> Result<Vec<(String, Value)>, String> {
+    let title = title.trim();
+    if title.is_empty() || title.chars().count() > 250 || title.chars().any(char::is_control) {
+        return Err("Введите название задачи от 1 до 250 символов без управляющих знаков.".into());
+    }
+    let mut params = vec![("title".into(), json!(title))];
+    if let Some(date) = due_date {
+        if !(0..=253402300799).contains(&date) {
+            return Err("Некорректный срок задачи.".into());
+        }
+        params.push(("due_date".into(), json!(date)));
+    }
+    if let Some(id) = note_id {
+        validate_object_id(id)?;
+        params.push(("note_id".into(), json!(id)));
+    }
+    Ok(params)
+}
 fn flag(value: &Value) -> bool {
     value == &json!(true) || value == &json!(1)
 }
@@ -620,6 +646,23 @@ impl NasClient {
             )
             .await?;
         serde_json::from_value(json!(rows)).map_err(|_| "Неизвестный формат задач NAS.".into())
+    }
+    pub async fn create_todo(
+        &self,
+        title: &str,
+        due_date: Option<i64>,
+        note_id: Option<&str>,
+    ) -> Result<TodoCreated, String> {
+        let params = todo_create_params(title, due_date, note_id)?;
+        let data = self
+            .call_version_inner("SYNO.NoteStation.Todo", 2, "create", params, true)
+            .await?;
+        let object_id = data
+            .get("object_id")
+            .and_then(Value::as_str)
+            .filter(|id| validate_object_id(id).is_ok())
+            .map(str::to_owned);
+        Ok(TodoCreated { object_id })
     }
     pub async fn set_todo_done(
         &self,
@@ -1081,6 +1124,33 @@ mod tests {
         let result = runtime.block_on(operation(client));
         worker.join().unwrap();
         result
+    }
+    #[test]
+    fn todo_creation_sends_only_selected_fields_and_accepts_empty_success() {
+        let result = section_case(vec![
+            (json!({"api":"SYNO.NoteStation.Todo","version":2,"method":"create","title":"Новая задача","due_date":1795211999_i64,"note_id":"note-a"}), json!({"success":true,"data":{"object_id":"created-task"}})),
+            (json!({"method":"create","title":"Без срока"}), json!({"success":true}))
+        ], |client| async move {
+            let created = client.create_todo("  Новая задача  ", Some(1795211999), Some("note-a")).await?;
+            assert_eq!(created.object_id.as_deref(), Some("created-task"));
+            assert!(client.create_todo("Без срока", None, None).await?.object_id.is_none());
+            Ok(json!(true))
+        }).unwrap();
+        assert_eq!(result, json!(true));
+    }
+    #[test]
+    fn todo_creation_rejects_invalid_input_before_sending() {
+        for title in ["", "   ", "line\nbreak", "bad\0value"] {
+            assert!(todo_create_params(title, None, None).is_err());
+        }
+        assert!(todo_create_params(&"я".repeat(251), None, None).is_err());
+        assert!(todo_create_params("Valid", Some(-1), None).is_err());
+        assert!(todo_create_params("Valid", Some(253402300800), None).is_err());
+        assert!(todo_create_params("Valid", None, Some("")).is_err());
+        assert_eq!(
+            todo_create_params("  Task  ", None, None).unwrap(),
+            vec![("title".into(), json!("Task"))]
+        );
     }
     #[test]
     fn todo_list_and_completion_use_minimal_mutation_and_accept_empty_success() {

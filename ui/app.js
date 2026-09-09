@@ -48,6 +48,7 @@ const noteEditor = new NoteEditor({
 bindSpelling({editor:noteEditor,invoke});
 let currentNote = null, selectedAccount = null;
 const collections=bindCollections({
+  getTaskNotes:()=>notes.map(note=>({...note,title:[note.title || 'Без названия',notebooks.find(book=>book.object_id===note.parent_id)?.title].filter(Boolean).join(' · ')})),
   invoke, prepare:async()=>!busy&&await noteEditor.leave(),
   activate:()=>{clearReader();setView('collections');}, setBusy,
   onRestored:async()=>{

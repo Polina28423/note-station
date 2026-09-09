@@ -323,6 +323,21 @@ async fn list_todos(state: State<'_, AppState>) -> Result<Vec<synology::Todo>, S
     guard.as_ref().ok_or("Войдите в NAS.")?.client.todos().await
 }
 #[tauri::command]
+async fn create_todo(
+    state: State<'_, AppState>,
+    title: String,
+    due_date: Option<i64>,
+    note_id: Option<String>,
+) -> Result<synology::TodoCreated, String> {
+    let guard = state.0.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .create_todo(&title, due_date, note_id.as_deref())
+        .await
+}
+#[tauri::command]
 async fn set_todo_done(
     state: State<'_, AppState>,
     id: String,
@@ -590,6 +605,7 @@ fn main() {
             set_session_persistence,
             has_saved_session,
             list_todos,
+            create_todo,
             set_todo_done,
             list_tags,
             list_tag_notes,
