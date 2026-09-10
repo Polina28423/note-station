@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { flattenTodos, filteredCollection, accessContext } from '../ui/collections.js';
+import { flattenTodos, filteredCollection, accessContext, taskDueEpoch } from '../ui/collections.js';
+
+test('task dates are local end-of-day epoch seconds and reject invalid dates',()=>{
+  assert.equal(taskDueEpoch(''),null);
+  const value=taskDueEpoch('2026-11-20');
+  const date=new Date(value*1000);
+  assert.equal(date.getFullYear(),2026);assert.equal(date.getMonth(),10);assert.equal(date.getDate(),20);
+  assert.equal(date.getHours(),23);assert.equal(date.getMinutes(),59);assert.equal(date.getSeconds(),59);
+  for(const bad of ['2026-02-30','1969-12-31','2026-13-01','not-date'])assert.throws(()=>taskDueEpoch(bad));
+});
 test('nested tasks flatten once and preserve depth and completion filters',()=>{
  const child={object_id:'child',title:'Материалы',done:true};const tasks=[{object_id:'parent',title:'План',done:false,items:[child]},child];
  const rows=flattenTodos(tasks);assert.equal(rows.length,2);assert.equal(rows[1].depth,1);

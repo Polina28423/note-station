@@ -37,6 +37,10 @@ window.__TAURI__ = { core: { invoke: async (command, args) => {
   if (command === 'logout') { saved = false; active = false; sessionStorage.setItem(fixtureKey,'false'); return {server_revoked:true,notice:null}; }
   if (!active) throw Error('Войдите в тестовый NAS.');
   if (command === 'list_todos') return structuredClone(fixtureTodos);
+  if (command === 'create_todo') {
+    const task={object_id:crypto.randomUUID(),title:args.title,done:false,due_date:args.dueDate,note_id:args.noteId,items:[]};
+    fixtureTodos.unshift(task);return {object_id:task.object_id};
+  }
   if (command === 'set_todo_done') {
     const task=[...fixtureTodos,...fixtureTodos.flatMap(task=>task.items||[])].find(task=>task.object_id===args.id);
     if(!task||task.done!==args.expectedDone)throw Error('Состояние задачи изменилось.');
