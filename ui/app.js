@@ -1,4 +1,5 @@
 import { bindCollections } from './collections.js';
+import { bindNoteTags } from './note-tags.js';
 import { bindSettingsTabs } from './settings.js';
 import { bindExternalLinks } from './links.js';
 import { bindSpelling } from './spelling.js';
@@ -74,6 +75,9 @@ bindExternalLinks(noteBody,url=>invoke('open_external_url',{url}),status);
 bindExternalLinks($('history-preview'),url=>invoke('open_external_url',{url}),message=>{$('history-status').textContent=message;});
 let bodyPointer=false;
 function editableNote(){return currentNote&&!currentNote.encrypted&&currentNote.ver!=null&&!busy&&!noteEditor.active&&!noteEditor.opening;}
+const noteTags=bindNoteTags({invoke,getNote:()=>currentNote,leave:()=>noteEditor.leave(),canOpen:()=>!busy,setBusy,status,
+  onSaved:result=>{currentNote=result.note;displayNote(result.note);const summary=notes.find(note=>note.object_id===result.note.object_id);if(summary)summary.tag=result.note.tags;}
+});
 function bodyAnchor(event) {
   const block=event.target.closest?.('p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,pre') || noteBody;
   let offset=0;
@@ -107,6 +111,7 @@ $('apply-settings').addEventListener('click',async()=>{
   status(persisted?'Настройки сохранены.':'Редактор выбран до закрытия приложения: настройки не удалось сохранить.',!persisted);
 });
 function displayNote(note) {
+  noteTags.display(note);
   $('reader-document').hidden = false; $('reader-empty').hidden = true;
   $('note-title').textContent = note.title || 'Без названия';
   $('note-meta').textContent = note.encrypted ? 'Зашифрованная заметка' : 'Заметка на NAS';
@@ -202,9 +207,11 @@ function status(message, error = false) {
 function setBusy(value) {
   busy = value;
   $('note-history').disabled = value || !currentNote || currentNote.encrypted;
+  $('note-tags-open').disabled=value||!currentNote||currentNote.encrypted||currentNote.ver==null;
   for (const id of ['switch-account', 'add-account', 'back-to-accounts', 'startup-accounts', 'connect', 'refresh', 'logout', 'certificate', 'clear-certificate', 'connection-mode', 'insecure-confirm', 'remember-session', 'restore-session', 'forget-session', 'startup-retry', 'startup-login', 'startup-logout', 'open-settings']) $(id).disabled = value;
 }
 function clearReader() {
+  noteTags.reset();noteTags.display(null);
   noteRequest++; selectedId = ''; copyText = ''; currentNote = null; noteEditor.close();
   $('note-history').disabled = true;
   $('reader-empty').hidden = false; $('reader-document').hidden = true;

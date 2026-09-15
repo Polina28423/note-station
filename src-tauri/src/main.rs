@@ -6,6 +6,7 @@ mod spelling;
 mod synology;
 
 use serde::Serialize;
+use serde_json::Value;
 use session_store::{expired_session, SavedSession, SessionStore};
 use std::sync::atomic::{AtomicBool, Ordering};
 use synology::{ConnectionMode, NasClient, Note, NoteSummary, NoteVersion, Notebook, SavedNote};
@@ -353,6 +354,39 @@ async fn set_todo_done(
         .await
 }
 #[tauri::command]
+async fn get_note_tags(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<synology::NoteTagState, String> {
+    state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .note_tags(&id)
+        .await
+}
+#[tauri::command]
+async fn set_note_tags(
+    state: State<'_, AppState>,
+    id: String,
+    expected_version: Value,
+    expected_tags: Vec<String>,
+    tags: Vec<String>,
+) -> Result<synology::SavedNote, String> {
+    state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .set_note_tags(&id, expected_version, expected_tags, tags)
+        .await
+}
+#[tauri::command]
 async fn list_tags(state: State<'_, AppState>) -> Result<Vec<synology::Tag>, String> {
     let guard = state.0.lock().await;
     guard.as_ref().ok_or("Войдите в NAS.")?.client.tags().await
@@ -608,6 +642,8 @@ fn main() {
             create_todo,
             set_todo_done,
             list_tags,
+            get_note_tags,
+            set_note_tags,
             list_tag_notes,
             list_shared_notebooks,
             list_shared_notes,

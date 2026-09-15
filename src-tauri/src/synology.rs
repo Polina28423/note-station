@@ -250,6 +250,46 @@ pub struct Note {
     pub title: String,
     pub content: String,
     pub encrypted: bool,
+    pub tags: Option<Vec<String>>,
+}
+#[derive(Serialize)]
+pub struct NoteTagState {
+    pub ver: Value,
+    pub tags: Vec<String>,
+    pub catalog: Vec<Tag>,
+}
+fn validate_tags(tags: &[String]) -> Result<(), String> {
+    let unique: std::collections::HashSet<_> = tags.iter().collect();
+    if tags.len() > 256
+        || unique.len() != tags.len()
+        || tags.iter().map(String::len).sum::<usize>() > 32768
+        || tags.iter().any(|name| {
+            name.trim().is_empty()
+                || name.chars().count() > 1024
+                || name.chars().any(char::is_control)
+        })
+    {
+        return Err("Некорректный список тегов: проверьте названия и повторы.".into());
+    }
+    Ok(())
+}
+fn tag_dictionary(value: &Value) -> Result<Vec<Value>, String> {
+    let map = value
+        .as_object()
+        .ok_or("Неизвестный формат каталога тегов.")?;
+    if map.len() > 10000 {
+        return Err("Слишком большой каталог тегов.".into());
+    }
+    map.iter()
+        .map(|(id, value)| {
+            if value.get("title").and_then(Value::as_str).is_none() {
+                return Err("Неизвестный формат каталога тегов.".into());
+            }
+            let mut row = value.clone();
+            row["tag_id"] = json!(id);
+            Ok(row)
+        })
+        .collect()
 }
 
 #[derive(Serialize, Deserialize)]
@@ -577,6 +617,9 @@ impl NasClient {
                 ("limit".into(), json!(200)),
             ]);
             let data = self.call_version(api, version, "list", fields).await?;
+            if key == "tags" && data.get(key).is_none() && data.get("total").is_none() {
+                return tag_dictionary(&data);
+            }
             let page = match data.get(key).or_else(|| {
                 if key == "items" {
                     data.get("todos")
@@ -714,6 +757,83 @@ impl NasClient {
             .await?;
         serde_json::from_value(json!(rows)).map_err(|_| "Неизвестный формат тегов NAS.".into())
     }
+    pub async fn note_tags(&self, id: &str) -> Result<NoteTagState, String> {
+        let note = self.note(id).await?;
+        if note.encrypted {
+            return Err("Теги зашифрованной заметки пока нельзя изменять.".into());
+        }
+        let tags = note
+            .tags
+            .ok_or("NAS не вернул список тегов заметки. Изменение запрещено.")?;
+        validate_tags(&tags)?;
+        Ok(NoteTagState {
+            ver: note.ver.ok_or("NAS не вернул версию заметки.")?,
+            tags,
+            catalog: self.tags().await?,
+        })
+    }
+    pub async fn set_note_tags(
+        &self,
+        id: &str,
+        expected_version: Value,
+        expected_tags: Vec<String>,
+        tags: Vec<String>,
+    ) -> Result<SavedNote, String> {
+        validate_object_id(id)?;
+        validate_tags(&tags)?;
+        validate_tags(&expected_tags)?;
+        if expected_version.is_null() {
+            return Err("Нет версии заметки. Откройте её заново.".into());
+        }
+        self.api("SYNO.NoteStation.Note", 3)?;
+        let mut current = self.note(id).await?;
+        if current.encrypted {
+            return Err("Теги зашифрованной заметки пока нельзя изменять.".into());
+        }
+        let previous = current
+            .tags
+            .as_ref()
+            .ok_or("NAS не вернул список тегов заметки. Изменение запрещено.")?;
+        let mut sorted_previous = previous.clone();
+        sorted_previous.sort();
+        let mut sorted_expected = expected_tags;
+        sorted_expected.sort();
+        if current.ver.as_ref() != Some(&expected_version) || sorted_previous != sorted_expected {
+            return Err(
+                "Заметка или её теги изменились на NAS. Обновите данные окна перед применением."
+                    .into(),
+            );
+        }
+        let mut sorted_tags = tags.clone();
+        sorted_tags.sort();
+        if sorted_tags == sorted_previous {
+            return Ok(SavedNote {
+                note: current,
+                notice: None,
+            });
+        }
+        self.call_version_inner(
+            "SYNO.NoteStation.Note",
+            3,
+            "set",
+            vec![
+                ("object_id".into(), json!(id)),
+                ("ver".into(), expected_version),
+                ("check_conflict".into(), json!(true)),
+                ("tag".into(), json!(tags)),
+            ],
+            true,
+        )
+        .await?;
+        match self.note(id).await {
+            Ok(note) => Ok(SavedNote { note, notice: None }),
+            Err(_) => {
+                current.ver = None;
+                current.tags = None;
+                Ok(SavedNote {note:current,notice:Some("NAS подтвердил изменение тегов, но повторное чтение не удалось. Откройте заметку заново перед редактированием.".into())})
+            }
+        }
+    }
     async fn section_notes(
         &self,
         recycle: bool,
@@ -752,9 +872,23 @@ impl NasClient {
                     .into(),
             );
         }
+        let title = if !notes.is_empty() && !notes.iter().any(|note| tag_matches(&note.tag, id)) {
+            self.tags()
+                .await?
+                .into_iter()
+                .find(|tag| tag.tag_id == id)
+                .map(|tag| tag.title)
+        } else {
+            None
+        };
         Ok(notes
             .into_iter()
-            .filter(|note| tag_matches(&note.tag, id))
+            .filter(|note| {
+                tag_matches(&note.tag, id)
+                    || title
+                        .as_ref()
+                        .is_some_and(|name| tag_matches(&note.tag, name))
+            })
             .collect())
     }
     pub async fn shared_notebooks(&self) -> Result<Vec<Notebook>, String> {
@@ -898,6 +1032,9 @@ impl NasClient {
                     .into()
             },
             encrypted,
+            tags: data
+                .get("tag")
+                .and_then(|value| serde_json::from_value::<Vec<String>>(value.clone()).ok()),
         })
     }
 
@@ -945,7 +1082,7 @@ impl NasClient {
                 Ok(SavedNote { note, notice: newer.then(|| "После сохранения появилась другая версия заметки. Показана актуальная версия с NAS.".into()) })
             },
             Err(_) => Ok(SavedNote { note: Note { object_id:id.into(), title, content, encrypted:false,
-                ver: result.pointer("/data/0/ver").cloned() }, notice: Some("NAS подтвердил сохранение, но повторное чтение не удалось. Обновите библиотеку перед дальнейшим редактированием.".into()) }),
+                ver: result.pointer("/data/0/ver").cloned(), tags:None }, notice: Some("NAS подтвердил сохранение, но повторное чтение не удалось. Обновите библиотеку перед дальнейшим редактированием.".into()) }),
         }
     }
 
@@ -1124,6 +1261,94 @@ mod tests {
         let result = runtime.block_on(operation(client));
         worker.join().unwrap();
         result
+    }
+    #[test]
+    fn tag_filter_resolves_catalog_ids_to_note_tag_names() {
+        let result=section_case(vec![
+            (json!({"api":"SYNO.NoteStation.Note","method":"list"}),json!({"success":true,"data":{"notes":[{"object_id":"note-a","tag":["Работа"]}],"total":1}})),
+            (json!({"api":"SYNO.NoteStation.Tag","method":"list"}),json!({"success":true,"data":{"tag-work":{"title":"Работа"}}}))
+        ],|client|async move{Ok(json!(client.notes_for_tag("tag-work").await?))}).unwrap();
+        assert_eq!(result.as_array().unwrap().len(), 1);
+    }
+    #[test]
+    fn note_tags_loads_catalog_dictionary_and_saves_only_metadata() {
+        let original = "<div><img src='attachment.png'></div><p>Keep this content</p>";
+        let result=section_case(vec![
+            (json!({"method":"get","object_id":"note-a"}),json!({"success":true,"data":{"ver":"v1","content":original,"tag":["Работа"]}})),
+            (json!({"api":"SYNO.NoteStation.Tag","method":"list"}),json!({"success":true,"data":{"tag-work":{"title":"Работа"}}})),
+            (json!({"method":"get","object_id":"note-a"}),json!({"success":true,"data":{"ver":"v1","content":original,"tag":["Работа"]}})),
+            (json!({"api":"SYNO.NoteStation.Note","version":3,"method":"set","object_id":"note-a","ver":"v1","check_conflict":true,"tag":["Новый"]}),json!({"success":true})),
+            (json!({"method":"get","object_id":"note-a"}),json!({"success":true,"data":{"ver":"v2","title":"Fresh title","content":original,"tag":["Новый"]}}))
+        ],|client|async move {
+            let state=client.note_tags("note-a").await?;assert_eq!(state.catalog[0].tag_id,"tag-work");
+            let saved=client.set_note_tags("note-a",state.ver,state.tags,vec!["Новый".into()]).await?;
+            Ok(json!(saved.note))
+        }).unwrap();
+        assert_eq!(result["content"], original);
+        assert_eq!(result["tags"], json!(["Новый"]));
+        assert_eq!(result["ver"], "v2");
+    }
+    #[test]
+    fn note_tag_conflicts_and_missing_metadata_never_write() {
+        for data in [
+            json!({"ver":"v2","content":"text","tag":["old"]}),
+            json!({"ver":"v1","content":"text","tag":["other"]}),
+            json!({"ver":"v1","content":"text"}),
+        ] {
+            let result = section_case(
+                vec![(json!({"method":"get"}), json!({"success":true,"data":data}))],
+                |client| async move {
+                    client
+                        .set_note_tags(
+                            "note-a",
+                            json!("v1"),
+                            vec!["old".into()],
+                            vec!["new".into()],
+                        )
+                        .await?;
+                    Ok(json!(true))
+                },
+            );
+            assert!(result.is_err());
+        }
+    }
+    #[test]
+    fn successful_tag_write_with_failed_read_disables_stale_note_editing() {
+        let result = section_case(
+            vec![
+                (
+                    json!({"method":"get"}),
+                    json!({"success":true,"data":{"ver":"v1","content":"keep","tag":["old"]}}),
+                ),
+                (
+                    json!({"api":"SYNO.NoteStation.Note","version":3,"method":"set","object_id":"note-a","ver":"v1","check_conflict":true,"tag":[]}),
+                    json!({"success":true}),
+                ),
+                (
+                    json!({"method":"get"}),
+                    json!({"success":false,"error":{"code":105}}),
+                ),
+            ],
+            |client| async move {
+                let saved = client
+                    .set_note_tags("note-a", json!("v1"), vec!["old".into()], vec![])
+                    .await?;
+                assert!(saved.notice.is_some());
+                assert!(saved.note.ver.is_none());
+                assert!(saved.note.tags.is_none());
+                Ok(json!(saved.note.content))
+            },
+        );
+        assert!(result.is_ok());
+    }
+    #[test]
+    fn tag_validation_rejects_duplicates_and_invalid_names() {
+        assert!(validate_tags(&["x".into(), "x".into()]).is_err());
+        assert!(validate_tags(&[" ".into()]).is_err());
+        assert!(validate_tags(&["bad\nname".into()]).is_err());
+        assert!(validate_tags(&vec!["x".into(); 257]).is_err());
+        assert!(validate_tags(&[]).is_ok());
+        assert!(tag_dictionary(&json!({"unexpected":"text"})).is_err());
     }
     #[test]
     fn todo_creation_sends_only_selected_fields_and_accepts_empty_success() {
