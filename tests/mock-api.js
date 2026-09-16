@@ -9,6 +9,8 @@ const notebooks = [
 const titles = ['План проекта на ноябрь', 'Заметки со встречи', 'Полезные материалы', 'Следующие шаги', 'Идеи для интерфейса'];
 const notes = notebooks.flatMap((n, index) => Array.from({ length: index === 5 ? 0 : 3 + index }, (_, i) => ({ object_id: `${n.object_id}-${i}`, parent_id: n.object_id, title: titles[i % titles.length], brief: 'Рабочие материалы, обсуждения и следующие шаги по проекту.', mtime: 1794391200 - i * 86400 })));
 const fixtureTodos=[{object_id:'task-one',title:'Подготовить план проекта',done:false,note_id:notes[0].object_id,items:[{object_id:'task-child',title:'Собрать материалы',done:false}]},{object_id:'task-two',title:'Проверить заметки',done:true}];
+const fixtureTags=[{tag_id:'tag-work',title:'Работа'},{tag_id:'tag-ideas',title:'Идеи'}];
+const fixtureNoteTags=new Map([[notes[0].object_id,['Работа']]]);
 const fixtureTrash=[{object_id:'deleted-one',title:'Удалённая заметка',parent_id:notebooks[0].object_id,recycle:true},{object_id:'deleted-two',title:'Старый черновик',parent_id:notebooks[0].object_id,recycle:true}];
 const scenario = new URL(location.href).searchParams.get('scenario') || 'restore';
 const fixtureKey = 'note-station-fixture-session:' + scenario;
@@ -48,7 +50,17 @@ window.__TAURI__ = { core: { invoke: async (command, args) => {
   }
   if (command === 'list_shared_notebooks') return notebooks.slice(0,2).map(book=>({...book,shared:true}));
   if (command === 'list_shared_notes') return notes.filter(note=>note.parent_id===args.id).map(note=>({...note,perm_from:args.id}));
-  if (command === 'list_tags') return [{tag_id:'tag-work',title:'Работа'},{tag_id:'tag-ideas',title:'Идеи'}];
+  if (command === 'list_tags') return structuredClone(fixtureTags);
+  if (command === 'get_note_tags') return {ver:overrides.get(args.id)?.ver||'v1',tags:[...(fixtureNoteTags.get(args.id)||[])],catalog:structuredClone(fixtureTags)};
+  if (command === 'set_note_tags') {
+    const current=fixtureNoteTags.get(args.id)||[];
+    if(args.expectedVersion!==(overrides.get(args.id)?.ver||'v1')||JSON.stringify(current)!==JSON.stringify(args.expectedTags))throw Error('Теги изменились на NAS.');
+    const note=await window.__TAURI__.core.invoke('get_note',{id:args.id});
+    fixtureNoteTags.set(args.id,[...args.tags]);
+    for(const title of args.tags)if(!fixtureTags.some(tag=>tag.title===title))fixtureTags.push({tag_id:crypto.randomUUID(),title});
+    note.tags=[...args.tags];note.ver='v'+(Number(note.ver.slice(1))+1);overrides.set(args.id,note);
+    return {note,notice:null};
+  }
   if (command === 'list_tag_notes') return notes.filter((note,index)=>index%2===(args.id==='tag-work'?0:1));
   if (command === 'list_recycled_notes') return [...fixtureTrash];
   if (command === 'get_section_note') return {object_id:args.id,ver:'v1',title:[...notes,...fixtureTrash].find(note=>note.object_id===args.id)?.title||'Заметка',encrypted:false,content:'<p>Текст заметки с NAS. Этот просмотр не меняет документ.</p><p><a href="https://example.org">Ссылка на сайт</a></p>'};
@@ -59,7 +71,7 @@ window.__TAURI__ = { core: { invoke: async (command, args) => {
   if (command === 'set_session_persistence') { saved = args.remember; sessionStorage.setItem(fixtureKey,String(saved)); return connected(saved).connection; }
   if (command === 'list_notebooks') return notebooks;
   if (command === 'list_notes') return notes;
-  if (command === 'get_note') return overrides.get(args.id) || { object_id:args.id, ver:'v1', title:notes.find(n=>n.object_id===args.id).title, encrypted:false, content: '<h2>Небольшие шаги, понятный результат</h2><p>Рабочее пространство должно помогать сосредоточиться на содержимом. Слева — блокноты, рядом — заметки, а здесь — всё самое важное.</p><h3>Что обсудили</h3><ul><li>Навигация по блокнотам и закреплённым разделам</li><li>Поиск и сортировка заметок</li><li>Удобное чтение без лишних элементов</li></ul><blockquote>Хороший интерфейс даёт место вашим мыслям.</blockquote><p><strong>Следующий шаг:</strong> проверить библиотеку на реальном NAS.</p>' };
+  if (command === 'get_note') return {...(overrides.get(args.id) || { object_id:args.id, ver:'v1', title:notes.find(n=>n.object_id===args.id).title, encrypted:false, content: '<h2>Небольшие шаги, понятный результат</h2><p>Рабочее пространство должно помогать сосредоточиться на содержимом. Слева — блокноты, рядом — заметки, а здесь — всё самое важное.</p><h3>Что обсудили</h3><ul><li>Навигация по блокнотам и закреплённым разделам</li><li>Поиск и сортировка заметок</li><li>Удобное чтение без лишних элементов</li></ul><blockquote>Хороший интерфейс даёт место вашим мыслям.</blockquote><p><strong>Следующий шаг:</strong> проверить библиотеку на реальном NAS.</p>' }),tags:fixtureNoteTags.get(args.id)||[]};
   if (command === 'save_note') {
     if (scenario === 'save-error') throw Error('Тест: NAS недоступен, заметка не сохранена.');
     if (scenario === 'conflict') throw Error('Заметка изменена на NAS с момента открытия.');
