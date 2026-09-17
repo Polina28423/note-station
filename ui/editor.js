@@ -1,4 +1,4 @@
-import { spellingStrings, typographyStrings, linkStrings, pasteStrings } from './strings.js';
+import { spellingStrings, typographyStrings, linkStrings, pasteStrings, noteTagStrings } from './strings.js';
 import { snapshotIsCurrent, selectionInSnapshot } from './spelling-adapter.js';
 import { htmlToText } from './content.js';
 import { ClassicSurface } from './classic-editor.js';
@@ -87,7 +87,7 @@ export class NoteEditor {
     window.addEventListener('beforeunload',e=>{if(this.dirty()||this.saving){e.preventDefault();e.returnValue='';}});
     window.addEventListener('keydown',e=>{
       if(!this.active)return;
-      if($('format-link-dialog').open||$('style-color-dialog').open||$('spelling-dialog')?.open){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s')e.preventDefault();return;}
+      if($('format-link-dialog').open||$('style-color-dialog').open||$('spelling-dialog')?.open||$('note-tags-dialog')?.open){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s')e.preventDefault();return;}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();this.openLink();return;}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();this.save();}
       if(this.mode==='blocks'&&(e.ctrlKey||e.metaKey)&&e.target.closest?.('#block-content')&&['z','y'].includes(e.key.toLowerCase())) {
@@ -105,7 +105,7 @@ export class NoteEditor {
   async start(note,{focusBody=false,anchor}={}) {
     if(this.active||this.saving||this.opening)return;
     if(note.encrypted||note.ver==null){this.status('Эту заметку пока нельзя редактировать: нет доступного текста или версии.',true);return;}
-    this.opening=true;this.onBusy(true);this.note=note;this.mode=this.preferredMode;
+    this.metadataError='';this.opening=true;this.onBusy(true);this.note=note;this.mode=this.preferredMode;
     try {
       $('reader-empty').hidden=true;$('reader-document').hidden=true;$('note-editor').hidden=false;
       $('edit-title').value=note.title;$('save-error').textContent='';
@@ -134,12 +134,20 @@ export class NoteEditor {
     }
   }
   dirty(){return !!(this.active&&this.note&&($('edit-title').value!==this.note.title||(this.mode==='classic'?this.surface.changed():this.bodyDirty)));}
+  acceptMetadata(note){
+    if(!this.active||this.note?.object_id!==note.object_id)return;
+    const unchanged=this.note.content===note.content&&this.note.title===note.title;
+    this.note={...this.note,tags:note.tags,ver:unchanged?note.ver:null};
+    this.metadataError=!unchanged?noteTagStrings.draftConflict:note.ver==null?noteTagStrings.draftUnknown:'';
+    $('save-error').textContent=this.metadataError;this.update();
+  }
   update(){
     $('edit-state').textContent=this.saving?'Сохранение…':this.opening?'Открытие редактора…':this.dirty()?'Есть несохранённые изменения':'Нет изменений';
     const locked=this.saving||this.opening||this.historyBusy||this.checking;
     $('paste-plain').disabled=locked||!this.active;
+    $('note-tags-open').disabled=locked||!this.active||this.note?.encrypted;
     const spellingButton=$('check-spelling');if(spellingButton)spellingButton.disabled=locked||!this.active||!this.surface?.spellingSnapshot;
-    $('save-note').disabled=locked||!this.dirty();$('cancel-edit').disabled=locked;
+    $('save-note').disabled=locked||!this.dirty()||!!this.metadataError;$('cancel-edit').disabled=locked;
     $('editor-undo').disabled=locked;$('editor-redo').disabled=locked;
     this.updateFormatting();
   }
@@ -238,7 +246,7 @@ export class NoteEditor {
     this.spellingRevision=(this.spellingRevision||0)+1;
     if($('style-color-dialog').open)$('style-color-dialog').close();this.colorSelection=null;
     if($('format-link-dialog').open)$('format-link-dialog').close();this.linkSelection=null;
-    this.active=false;this.surface?.destroy();this.surface=null;this.note=null;this.bodyDirty=false;
+    this.active=false;this.surface?.destroy();this.surface=null;this.note=null;this.bodyDirty=false;this.metadataError='';
     $('edit-title').value='';$('save-error').textContent='';$('note-editor').hidden=true;
     $('editor-surface').inert=false;
     for(const id of ['font-smaller','font-larger','copy-note'])$(id).disabled=false;
@@ -252,6 +260,7 @@ export class NoteEditor {
   }
   async save(){
     if(!this.active||this.saving||this.opening||this.historyBusy||this.checking)return false;
+    if(this.metadataError){$('save-error').textContent=this.metadataError;return false;}
     if(!$('edit-title').value.trim()){$('save-error').textContent='Введите заголовок заметки.';$('edit-title').focus();return false;}
     this.saving=true;this.onBusy(true);$('edit-title').disabled=true;$('editor-surface').inert=true;this.update();$('save-error').textContent='';
     try {
