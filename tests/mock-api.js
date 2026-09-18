@@ -78,7 +78,7 @@ window.__TAURI__ = { core: { invoke: async (command, args) => {
     const previous = overrides.get(args.id);
     const version = previous?.ver || 'v1';
     if (args.expectedVersion !== version) throw Error('Конфликт версии заметки.');
-    const note = {object_id:args.id,ver:'v'+(Number(version.slice(1))+1),title:args.title,content:args.content,encrypted:false};
+    const note = {object_id:args.id,ver:'v'+(Number(version.slice(1))+1),title:args.title,content:args.content,encrypted:false,tags:fixtureNoteTags.get(args.id)||[]};
     overrides.set(args.id,note); sessionStorage.setItem('note-station-editor-fixture',JSON.stringify([...overrides]));
     const summary = notes.find(n=>n.object_id===args.id); summary.title=args.title; summary.brief=args.brief;
     return {note,notice:null};

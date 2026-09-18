@@ -1,23 +1,34 @@
 const assert=require('node:assert/strict');
 module.exports=async(page,base)=>{
+ for(const mode of ['blocks','classic']){
   await page.goto(base+'/');await page.locator('.account-open').first().click();
   await page.locator('#notes .note-row').first().click();await page.locator('#note-content p').first().waitFor();
   const content=await page.locator('#note-content').innerHTML();
+  assert.equal(await page.locator('#reader-document #note-tags-open').count(),0);
+  await page.locator('#profile-menu summary').click();await page.locator('#profile-settings').click();await page.locator('#editor-mode').selectOption(mode);await page.locator('#apply-settings').click();
+  await page.locator('#note-content p').first().click();await page.waitForFunction(()=>!document.getElementById('note-tags-open').disabled);
+  assert.equal(await page.locator('.editor-controls-right #note-tags-open').count(),1);
+  await page.locator('#edit-title').fill('Черновик '+mode);
   await page.evaluate(()=>{
-    const original=window.__TAURI__.core.invoke;window.tagWrites=[];
+    const original=window.__TAURI__.core.invoke;window.tagWrites=[];window.tagBodyWrites=[];
     window.__TAURI__.core.invoke=async(command,args)=>{
       if(command==='get_note_tags'&&window.tagLoadDelay)await new Promise(resolve=>setTimeout(resolve,150));
       if(command==='set_note_tags'){
         window.tagWrites.push(args);await new Promise(resolve=>setTimeout(resolve,80));
         if(window.tagWriteFail)throw Error('Fixture: connection lost');
       }
-      return original(command,args);
+      if(command==='save_note')window.tagBodyWrites.push(args);
+      const result=await original(command,args);
+      if(command==='set_note_tags'&&window.tagRemoteChange)return {...result,note:{...result.note,content:'<p>Remote content changed</p>'}};
+      if(command==='set_note_tags'&&window.tagUnknownVersion)return {...result,note:{...result.note,ver:null,tags:null},notice:'Fixture: read unavailable'};
+      return result;
     };
   });
   const open=async()=>{await page.locator('#note-tags-open').click();await page.waitForFunction(()=>!document.getElementById('note-tags-apply').disabled);};
   const create=async name=>{await page.locator('#note-tags-new').fill(name);await page.locator('#note-tags-new').press('Enter');};
   assert.match(await page.locator('#note-tag-chips').textContent(),/Работа/);
   await open();
+  await page.keyboard.press('Control+s');assert.equal(await page.evaluate(()=>window.tagBodyWrites.length),0);
   await page.locator('#note-tags-search').fill('иде');assert.equal(await page.locator('.note-tag-option').count(),1);
   await page.locator('.note-tag-option').click();
   await create('Reference');await create('REFERENCE');
@@ -38,6 +49,7 @@ module.exports=async(page,base)=>{
   const writes=await page.evaluate(()=>window.tagWrites);assert.equal(writes.length,1);
   assert.deepEqual(writes[0].expectedTags,['Работа']);assert.deepEqual(writes[0].tags,['Работа','Reference']);
   assert.ok(!('content' in writes[0])&&!('title' in writes[0]));
+  assert.equal(await page.locator('#note-editor').isVisible(),true);assert.equal(await page.locator('#reader-document').isVisible(),false);assert.equal(await page.locator('#edit-title').inputValue(),'Черновик '+mode);assert.equal(await page.locator('#unsaved-dialog').isVisible(),false);
   assert.equal(await page.locator('#note-content').innerHTML(),content);assert.match(await page.locator('#note-tag-chips').textContent(),/Reference/);
   await open();await page.locator('#note-tags-selected button[aria-label="Снять тег Reference"]').click();
   await page.evaluate(()=>window.tagWriteFail=true);await page.locator('#note-tags-apply').click();
@@ -52,5 +64,19 @@ module.exports=async(page,base)=>{
   await open();assert.match(await page.locator('#note-tags-all').textContent(),/Reference/);await page.locator('#note-tags-cancel').click();
   await page.evaluate(()=>window.tagLoadDelay=true);await page.locator('#note-tags-open').click();await page.locator('#note-tags-close').click();
   await page.waitForTimeout(200);assert.equal(await page.locator('#note-tags-dialog').isVisible(),false);
-  console.log('PASS tag dialog: existing tags, search, staged creation/cancel, duplicates, metadata-only apply, double click, errors/reload, clear associations, preserved catalog and late loads');
+  await page.locator('#save-note').click();await page.locator('#note-editor').waitFor({state:'hidden'});
+  assert.equal(await page.locator('#note-title').textContent(),'Черновик '+mode);
+  const saved=await page.evaluate(()=>window.tagBodyWrites);assert.equal(saved.length,1);assert.notEqual(saved[0].expectedVersion,writes[0].expectedVersion);
+  await page.evaluate(()=>{window.tagLoadDelay=false;});
+  await page.locator('#note-content p').first().click();await page.waitForFunction(()=>!document.getElementById('note-tags-open').disabled);
+  await page.locator('#edit-title').fill('Сохранить этот черновик');
+  await open();await create('guard-'+mode);
+  await page.evaluate(mode=>{window.tagRemoteChange=mode==='blocks';window.tagUnknownVersion=mode==='classic';},mode);
+  await page.locator('#note-tags-apply').click();await page.locator('#note-tags-dialog').waitFor({state:'hidden'});
+  assert.equal(await page.locator('#edit-title').inputValue(),'Сохранить этот черновик');assert.equal(await page.locator('#save-note').isDisabled(),true);
+  await page.keyboard.press('Control+s');assert.equal(await page.evaluate(()=>window.tagBodyWrites.length),1);
+  if(mode==='classic'){await page.evaluate(()=>window.tagUnknownVersion=false);await open();await page.locator('#note-tags-apply').click();await page.locator('#note-tags-dialog').waitFor({state:'hidden'});assert.equal(await page.locator('#save-note').isDisabled(),false);}
+  await page.locator('#cancel-edit').click();await page.locator('#discard-edit').click();
+  console.log('PASS '+mode+' tag dialog: existing tags, search, staged creation/cancel, duplicates, metadata-only apply, double click, errors/reload, clear associations, preserved catalog and late loads, editor draft preservation and version rebasing');
+ }
 };
