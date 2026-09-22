@@ -28,6 +28,18 @@ module.exports=async(page,base)=>{
   const create=async name=>{await page.locator('#note-tags-new').fill(name);await page.locator('#note-tags-new').press('Enter');};
   assert.match(await page.locator('#note-tag-chips').textContent(),/Работа/);
   await open();
+  for(const id of ['note-tags-search','note-tags-new']){
+    await page.locator('#'+id).focus();
+    const clipped=await page.locator('#'+id).evaluate(input=>{
+      const style=getComputedStyle(input),ring=parseFloat(style.outlineWidth)+parseFloat(style.outlineOffset),rect=input.getBoundingClientRect();
+      for(let parent=input.parentElement;parent;parent=parent.parentElement){
+        const css=getComputedStyle(parent),bounds=parent.getBoundingClientRect();
+        if(/auto|scroll|hidden|clip/.test(css.overflowX)&&(rect.left-ring<bounds.left+parent.clientLeft-.5||rect.right+ring>bounds.left+parent.clientLeft+parent.clientWidth+.5))return true;
+      }
+      return false;
+    });
+    assert.equal(clipped,false,id+' focus ring must fit inside scrolling containers');
+  }
   await page.keyboard.press('Control+s');assert.equal(await page.evaluate(()=>window.tagBodyWrites.length),0);
   await page.locator('#note-tags-search').fill('иде');assert.equal(await page.locator('.note-tag-option').count(),1);
   await page.locator('.note-tag-option').click();
