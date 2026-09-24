@@ -25,6 +25,7 @@ export function safeNoteFragment(html) {
         const href = normalizeWebUrl(node.getAttribute('href'));
         if (href) {
           const link = document.createElement('a'); link.href = href; link.rel = 'noopener noreferrer'; link.title = linkStrings.openHint;
+          for(const [key,value] of Object.entries(safeStyles(node.getAttribute('style'))))link.style.setProperty(key,value);
           copy(node, link, depth + 1); target.append(link);
         } else { copy(node, target, depth + 1); }
         continue;

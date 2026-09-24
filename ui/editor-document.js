@@ -30,7 +30,7 @@ function inlineNodes(nodes, strict, depth = 0) {
       return inlineNodes(node.childNodes || [], false, depth + 1);
     }
     const a = attrs(node);
-    const allowed=node.tagName==='a'?['href','title','target','rel']:node.tagName==='font'?['color']:['span','mark'].includes(node.tagName)?['style']:[];
+    const allowed=node.tagName==='a'?['href','title','target','rel','style']:node.tagName==='font'?['color']:['span','mark'].includes(node.tagName)?['style']:[];
     if (strict && Object.keys(a).some(k => !allowed.includes(k))) throw Error('Особое оформление текста.');
     if (node.tagName === 'br') return '<br>';
     const body = inlineNodes(node.childNodes || [], strict, depth + 1);
@@ -46,7 +46,10 @@ function inlineNodes(nodes, strict, depth = 0) {
     if (node.tagName === 'a') {
       const href = safeLink(a.href);
       if (strict && !href) throw Error('Особая ссылка.');
-      return href ? `<a href="${esc(href)}"${a.title ? ` title="${esc(a.title)}"` : ''}>${body}</a>` : body;
+      const styles=safeStyles(a.style,strict);
+      if(styles['text-align']){if(strict)throw Error('Особое выравнивание ссылки.');delete styles['text-align'];}
+      const style=styleText(styles),formatted=style?`<span style="${style}">${body}</span>`:body;
+      return href ? `<a href="${esc(href)}"${a.title ? ` title="${esc(a.title)}"` : ''}>${formatted}</a>` : formatted;
     }
     return `<${node.tagName}>${body}</${node.tagName}>`;
   }).join('');
@@ -201,10 +204,20 @@ export class EditorDocument {
     }
     if(errors) {if(html)this.addProtected(html,'');return;}
     cursor=0;
-    for(const {node,start,end} of ranges) {
+    for(let index=0;index<ranges.length;index++) {
+      const {node,start}=ranges[index];let end=ranges[index].end;
       if(node.nodeName==='#comment'||(node.nodeName==='#text'&&!node.value.trim()))continue;
+      const inline=node.nodeName==='#text'||INLINE.has(node.tagName);
+      const flow=[node];
+      if(inline){
+        while(index+1<ranges.length){
+          const next=ranges[index+1];
+          if(next.node.nodeName!=='#text'&&!INLINE.has(next.node.tagName))break;
+          flow.push(next.node);end=next.end;index++;
+        }
+      }
       const raw=html.slice(start,end),prefix=html.slice(cursor,start);cursor=end;
-      try {this.add(convert(node),raw,prefix);} catch {this.addProtected(raw,prefix);}
+      try {this.add(inline?{type:'paragraph',data:{text:inlineNodes(flow,true)}}:convert(node),raw,prefix);} catch {this.addProtected(raw,prefix);}
     }
     this.tail=html.slice(cursor);
   }
@@ -238,7 +251,7 @@ export class EditorDocument {
       if(record&&blockSignature(block)===record.baseline)return record.prefix+record.source;
       if(block.type==='preserved')return (record?.prefix || '')+this.fragments.get(block.data.key);
       let rendered=renderBlock(block);
-      if(block.type==='paragraph'&&/^\s*<div[\s>]/i.test(record?.source || ''))rendered=rendered.replace(/^<p(?=[\s>])/,'<div').replace(/<\/p>$/,'</div>');
+      if(block.type==='paragraph'&&record&&!/^\s*<p[\s>]/i.test(record.source))rendered=rendered.replace(/^<p(?=[\s>])/,'<div').replace(/<\/p>$/,'</div>');
       return (record?.prefix || '')+rendered;
     }).join('')+this.tail;
   }

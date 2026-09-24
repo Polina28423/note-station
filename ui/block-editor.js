@@ -43,7 +43,7 @@ export class BlockSurface {
     class Paragraph extends lib.Paragraph {
       static get sanitize(){return {text:INLINE_RULES};}
       constructor(options){super(options);this.source=surface.document.records.get(options.block.id)?.source || '<p>';}
-      render(){const element=super.render();element.dataset.sourceTag=/^\s*<div[\s>]/i.test(this.source)?'div':'p';return element;}
+      render(){const element=super.render();element.dataset.sourceTag=/^\s*<p[\s>]/i.test(this.source)?'p':'div';return element;}
     }
     class Header extends lib.Header {static get sanitize(){return {text:INLINE_RULES,level:false};}}
     class Quote extends lib.Quote {static get sanitize(){return {text:INLINE_RULES,caption:INLINE_RULES,alignment:false};}renderSettings(){return [];}}
