@@ -5,6 +5,26 @@ import { normalizeColor, safeStyles, normalizeFontFamily, normalizeFontSize } fr
 const load = html => { const doc=new EditorDocument(html);doc.bindBaseline(doc.blocks);return doc; };
 const clone = value => structuredClone(value);
 
+test('standalone links and adjacent inline text are editable without splitting their flow',()=>{
+  const html='<div><a href="https://example.org/one">First</a></div><div>Second</div><a href="https://example.org/three">Third</a>';
+  const doc=load(html);assert.deepEqual(doc.blocks.map(block=>block.type),['paragraph','paragraph','paragraph']);
+  assert.equal(doc.serialize(doc.blocks),html);
+  const blocks=clone(doc.blocks);blocks[2].data.text+='<br>More text';
+  assert.equal(doc.serialize(blocks),'<div><a href="https://example.org/one">First</a></div><div>Second</div><div><a href="https://example.org/three">Third</a><br>More text</div>');
+  const flow=load('Before <a href="https://example.org">Link</a><br><b>After</b>');
+  assert.equal(flow.blocks.length,1);assert.equal(flow.blocks[0].type,'paragraph');
+  assert.match(flow.blocks[0].data.text,/Before <a.*Link<\/a><br><b>After<\/b>/);
+  assert.equal(load('<span style="color:red">Styled</span>').blocks[0].type,'paragraph');
+  const styled=load('<p><a href="https://example.org" style="color:red;font-size:14pt">Styled link</a></p>');
+  assert.equal(styled.blocks[0].type,'paragraph');
+  assert.match(styled.blocks[0].data.text,/<a.*<span style="color:#ff0000;font-size:14pt">Styled link<\/span><\/a>/);
+});
+test('standalone unsafe links, special attributes and inline attachments stay protected',()=>{
+  for(const html of ['<a href="javascript:alert(1)">Link</a>','<a href="https://example.org" onclick="bad()">Link</a>','<a href="https://example.org"><img src="attachment.png"></a>']){
+    const doc=load(html);assert.equal(doc.blocks[0].type,'preserved');assert.equal(doc.serialize(doc.blocks),html);
+  }
+});
+
 test('editing a div line retains div layout instead of adding paragraph margins',()=>{
   const doc=load('<div>Before</div><div><br></div><div>Next</div>');
   const blocks=clone(doc.blocks);blocks[0].data.text='After';
