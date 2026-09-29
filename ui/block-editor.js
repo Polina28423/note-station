@@ -1,3 +1,4 @@
+import { ImageSession } from './images.js';
 import { bindExternalLinks, updateLink } from './links.js';
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
 import { EditorDocument, documentSignature } from './editor-document.js';
@@ -5,14 +6,19 @@ import { safeNoteFragment } from './content.js';
 import { focusContent, editableTarget } from './editor-focus.js';
 import { ALIGNMENTS, normalizeColor, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 
-const INLINE_RULES={b:true,strong:true,i:true,em:true,u:true,s:true,strike:true,del:true,a:{href:true,title:true},br:true,code:true,mark:{style:true},span:{style:true},font:{color:true}};
+const INLINE_RULES={b:true,strong:true,i:true,em:true,u:true,s:true,strike:true,del:true,a:{href:true,title:true},br:true,code:true,mark:{style:true},span:{style:true,'data-note-image':true,contenteditable:true},font:{color:true}};
 const $=id=>document.getElementById(id);
 export class BlockSurface {
   constructor(onChange,onOpenLink=()=>{},onLinkError=()=>{}) {this.openExternal=onOpenLink;this.linkError=onLinkError;this.notify=onChange;this.ready=false;this.history=[];this.historyIndex=-1;this.queue=Promise.resolve();}
   async load(note) {
     const lib=window.NoteStationBlocks;
     if(!lib)throw Error('Не удалось загрузить Editor.js.');
-    this.document=new EditorDocument(note.content);
+    this.images=new ImageSession(note,this.loadImage);
+    this.images.onRemove=async element=>{
+      await this.capture();if(!this.ready||!element.isConnected)return;
+      element.remove();this.notify();await this.capture();
+    };
+    this.document=new EditorDocument(this.images.encode(note.content));
     this.alignments=new Map();
     const surface=this;
     class AlignmentTune {
@@ -61,7 +67,7 @@ export class BlockSurface {
     class ColorSanitizer {
       static get isInline(){return true;}
       static get title(){return 'Цвет текста';}
-      static get sanitize(){return {span:{style:true},font:{color:true},mark:{style:true}};}
+      static get sanitize(){return {span:{style:true,'data-note-image':true,contenteditable:true},font:{color:true},mark:{style:true}};}
       constructor({api}){this.api=api;}
       render(){const button=document.createElement('button');button.type='button';button.className=this.api.styles.inlineToolButton;button.textContent='A';return button;}
       surround(){document.getElementById('format-text-color').click();}
@@ -89,6 +95,7 @@ export class BlockSurface {
     };
     holder.addEventListener('keydown',this.onEnter,true);
     this.unbindLinks=bindExternalLinks(holder,this.openExternal,this.linkError);
+    this.unbindImages=this.images.bind(holder,file=>this.insertImage(file),error=>this.notify(error));
     this.onPaste=event=>{
       if(!this.ready)return;
       if(this.pastePlain&&event.clipboardData){
@@ -107,8 +114,8 @@ export class BlockSurface {
       try {
         if(html.length>2*1024*1024)throw Error('Слишком большой вставляемый HTML.');
         const cleaned=window.DOMPurify.sanitize(html,{USE_PROFILES:{html:true},FORBID_TAGS:['script','style','iframe','object','embed','form'],FORBID_ATTR:['srcdoc']});
-        const incoming=new EditorDocument(cleaned);
-        if(!incoming.fragments.size&&!incoming.blocks.some(block=>block.tunes))return; // Native paste handles ordinary inline text.
+        const incoming=new EditorDocument(this.images.encode(cleaned));
+        if(!/<img\b/i.test(cleaned)&&!incoming.fragments.size&&!incoming.blocks.some(block=>block.tunes))return; // Native paste handles ordinary inline text.
         event.preventDefault();event.stopImmediatePropagation();
         this.pasteQueue=(this.pasteQueue || Promise.resolve()).then(()=>this.pasteDocument(incoming)).catch(error=>this.notify(error));
       } catch(error){event.preventDefault();event.stopImmediatePropagation();this.notify(error);}
@@ -135,14 +142,15 @@ export class BlockSurface {
         blockTunes:{delete:{Delete:'Удалить'},moveUp:{'Move up':'Выше'},moveDown:{'Move down':'Ниже'}},
         tools:{link:{'Add a link':'Введите ссылку'},header:{'Heading 1':'Заголовок 1','Heading 2':'Заголовок 2','Heading 3':'Заголовок 3','Heading 4':'Заголовок 4','Heading 5':'Заголовок 5','Heading 6':'Заголовок 6'},quote:{'Enter a quote':'Текст цитаты','Enter a caption':'Автор'},table:{'Add row above':'Строка выше','Add row below':'Строка ниже','Delete row':'Удалить строку','Add column to left':'Столбец слева','Add column to right':'Столбец справа','Delete column':'Удалить столбец','With headings':'С заголовками','Without headings':'Без заголовков'},list:{'Ordered':'Нумерованный','Unordered':'Маркированный','Checklist':'Чеклист','Start with':'Начать с','Counter type':'Нумерация'}}
       }},
-      onChange:()=>{if(this.ready){this.notify();this.scheduleHistory();}}
+      onChange:()=>{if(this.ready){this.images.paint(holder);this.scheduleHistory();}}
     });
     await this.editor.isReady;
     const snapshot=await this.snapshot();this.document.bindBaseline(snapshot.blocks);
-    this.baseline=documentSignature(snapshot.blocks);this.history=[snapshot];this.historySizes=new WeakMap([[snapshot,JSON.stringify(snapshot).length*2]]);this.historyBytes=this.historySizes.get(snapshot);this.historyIndex=0;this.ready=true;
+    this.baseline=documentSignature(snapshot.blocks);this.history=[snapshot];this.historySizes=new WeakMap([[snapshot,JSON.stringify(snapshot).length*2]]);this.historyBytes=this.historySizes.get(snapshot);this.historyIndex=0;this.ready=true;this.images.paint(holder);
   }
   async snapshot() {
     const result=await this.editor.save();
+    for(const block of result.blocks)if(block.type!=='code')block.data=this.images.normalize(block.data);
     const live=Array.from({length:this.editor.blocks.getBlocksCount()},(_,i)=>this.editor.blocks.getBlockByIndex(i).id);
     if(result.blocks.length!==live.length||result.blocks.some((b,i)=>b.id!==live[i]))throw Error('Один из блоков не удалось сохранить. Заполните пустой блок или удалите его явно.');
     // Prevent silent invalid/unknown-data loss during the save pipeline.
@@ -175,18 +183,27 @@ export class BlockSurface {
     if(next<0||next>=this.history.length)return;
     this.ready=false;clearTimeout(this.timer);
     try {await this.editor.blocks.render(this.history[next]);this.historyIndex=next;}
-    finally {this.ready=true;}
+    finally {this.ready=true;this.images.paint($('block-content'));}
     this.notify(null,documentSignature(this.history[next].blocks)!==this.baseline);
   }
   undo(){return this.travel(-1);}
   redo(){return this.travel(1);}
   async content() {
+    await this.images?.pending;
     await this.pasteQueue;
     await this.queue.catch(()=>{});
     const data=await this.snapshot();
     return {data,removed:this.document.missingProtected(data.blocks),changed:documentSignature(data.blocks)!==this.baseline};
   }
-  output(data,removed){return this.document.serialize(data.blocks,removed);}
+  output(data,removed){return this.images.decode(this.document.serialize(data.blocks,removed));}
+  async insertImage(file){
+    if(!this.ready)return;
+    await this.capture();const editor=this.editor;
+    const token=await this.images.add(file);if(this.editor!==editor||!this.ready)return;
+    const index=Math.max(0,editor.blocks.getCurrentBlockIndex()+1);
+    editor.blocks.insert('paragraph',{text:token},{},index,true);
+    this.images.paint($('block-content'));this.notify();await this.capture();
+  }
   spellingSnapshot(){
     const elements=[...$('block-content').querySelectorAll('[contenteditable="true"],textarea')]
       .filter(element=>!element.closest('.preserved-fragment,.ce-code,pre,code') && !element.parentElement.closest('[contenteditable="true"]'));
@@ -287,5 +304,5 @@ export class BlockSurface {
     }
     await this.capture();
   }
-  destroy(){this.ready=false;clearTimeout(this.timer);const holder=$('block-content');this.unbindLinks?.();holder.removeEventListener('keydown',this.onEnter,true);holder.removeEventListener('paste',this.onPaste,true);this.editor?.destroy?.();this.editor=null;this.history=[];this.document=null;}
+  destroy(){this.ready=false;clearTimeout(this.timer);const holder=$('block-content');this.unbindLinks?.();this.unbindImages?.();holder.removeEventListener('keydown',this.onEnter,true);holder.removeEventListener('paste',this.onPaste,true);this.editor?.destroy?.();this.editor=null;this.history=[];this.document=null;}
 }

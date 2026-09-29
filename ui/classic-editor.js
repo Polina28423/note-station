@@ -1,3 +1,4 @@
+import { ImageSession } from './images.js';
 import { bindExternalLinks, updateLink } from './links.js';
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
 import { focusContent } from './editor-focus.js';
@@ -19,11 +20,13 @@ export class ClassicSurface {
       paste_data_images: false, automatic_uploads: false,
       noneditable_class: 'mceNonEditable',
       content_security_policy: "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';",
-      content_style: 'body{font:15px/1.7 Arial,sans-serif;color:#505a64;margin:20px} a{color:#176b94;text-decoration:underline;overflow-wrap:anywhere} .mceNonEditable{display:inline-block;padding:8px 12px;background:#edf3f8;border:1px solid #cfdae5;color:#7a8a99;border-radius:3px} table{border-collapse:collapse} td,th{border:1px solid #d7e1eb;padding:8px}',
+      content_style: 'body{font:15px/1.7 Arial,sans-serif;color:#505a64;margin:20px} a{color:#176b94;text-decoration:underline;overflow-wrap:anywhere} .note-image{display:inline-flex;flex-direction:column;max-width:100%;color:#637585}.note-image img{display:block;max-width:100%;height:auto}.note-image-status{padding:8px;border:1px solid #c8d5e2;font-size:12px}[data-note-image]{display:inline-block;position:relative;max-width:100%;vertical-align:middle}.note-image-remove{position:absolute;right:4px;top:4px;min-width:30px;min-height:30px;background:white;border:1px solid #c8d5e2;cursor:pointer;font-size:22px}.mceNonEditable{display:inline-block;padding:8px 12px;background:#edf3f8;border:1px solid #cfdae5;color:#7a8a99;border-radius:3px} table{border-collapse:collapse} td,th{border:1px solid #d7e1eb;padding:8px}',
       contextmenu: false,
       setup: editor => {
         editor.ui.registry.addButton('noteLink',{icon:'link',tooltip:'Ссылка',onAction:()=>this.editLink()});
-        editor.on('input change Undo Redo', () => this.update());
+        editor.on('input change Undo Redo', () => {this.images?.paint(editor.getBody());this.update();});
+        editor.on('PreProcess',event=>{for(const element of event.node.querySelectorAll('[data-note-image]'))element.textContent='[Изображение]';});
+        editor.on('PastePreProcess',event=>{if(this.images)event.content=this.images.encode(this.clean(event.content));});
         editor.on('NodeChange SelectionChange focus blur keyup mouseup',()=>this.selectionChanged?.());
         editor.addShortcut('meta+s', 'Сохранить заметку', () => this.save());
       },
@@ -43,10 +46,10 @@ export class ClassicSurface {
     this.unbindLinks=bindExternalLinks(this.editor.getBody(),this.openExternal,this.linkError);
   }
   clean(html) {
-    return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS: ['style','form','input','button','textarea','iframe','object','embed'], ADD_ATTR: ['data-note-protected'] });
+    return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS: ['style','form','input','button','textarea','iframe','object','embed'], ADD_ATTR: ['data-note-protected','data-note-image','contenteditable'] });
   }
   protectMedia(html) {
-    const template = document.createElement('template'); template.innerHTML = html;
+    const template = document.createElement('template'); template.innerHTML = this.images ? this.images.encode(html) : html;
     this.media = new Map();
     for (const element of [...template.content.querySelectorAll('img,iframe,object,embed,audio,video')]) {
       if (!template.content.contains(element)) continue;
@@ -68,12 +71,32 @@ export class ClassicSurface {
         element.replaceWith(inert.content);
       } else { element.removeAttribute('data-note-protected'); }
     }
-    return template.innerHTML;
+    return this.images ? this.images.decode(template.innerHTML) : template.innerHTML;
   }
   async load(note) {
     await this.init(); this.note = note;
+    this.images=new ImageSession(note,this.loadImage);this.images.background=true;
+    this.images.onRemove=element=>{this.editor.undoManager.transact(()=>element.remove());this.update();};
     this.editor.setContent(this.protectMedia(note.content));
-    this.editor.undoManager.clear(); this.baseline = this.editor.getContent();
+    this.editor.undoManager.clear();this.editor.undoManager.add(); this.baseline = this.editor.getContent();
+    this.images.paint(this.editor.getBody());
+    this.unbindImages?.();this.unbindImages=this.images.bind(this.editor.getBody(),file=>this.insertImage(file),error=>this.linkError(String(error),true));
+  }
+  async insertImage(file){
+    const editor=this.editor;let range=this.selectionRange();
+    const token=await this.images.add(file);if(editor!==this.editor)return;
+    editor.focus();
+    if(!range||!editor.getBody().contains(range.startContainer)||!editor.getBody().contains(range.endContainer)){range=editor.getDoc().createRange();range.selectNodeContents(editor.getBody());range.collapse(false);}
+    const node=range.startContainer.nodeType===1?range.startContainer:range.startContainer.parentElement;
+    const protectedElement=node.closest?.('[data-note-image],.mceNonEditable');
+    if(protectedElement){range=editor.getDoc().createRange();range.setStartAfter(protectedElement);range.collapse(true);}
+    editor.undoManager.add();
+    editor.undoManager.transact(()=>{
+      const template=editor.getDoc().createElement('template');template.innerHTML=token;
+      const element=template.content.firstChild;range.deleteContents();range.insertNode(element);
+      const spacer=editor.getDoc().createTextNode(' ');element.after(spacer);range.setStart(spacer,1);range.collapse(true);editor.selection.setRng(range);
+    });
+    this.images.paint(editor.getBody());this.update();
   }
   changed() { return this.editor.getContent() !== this.baseline; }
   spellingSnapshot(){
@@ -122,5 +145,5 @@ export class ClassicSurface {
   focus(anchor) { this.editor.focus(); focusContent(this.editor.getBody(),anchor); }
   undo() { this.editor.undoManager.undo(); this.update(); }
   redo() { this.editor.undoManager.redo(); this.update(); }
-  destroy() { this.unbindLinks?.();this.editor?.remove(); this.editor=null; this.media?.clear(); }
+  destroy() { this.unbindImages?.();this.unbindLinks?.();this.editor?.remove(); this.editor=null; this.media?.clear(); }
 }

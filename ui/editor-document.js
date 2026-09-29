@@ -30,6 +30,7 @@ function inlineNodes(nodes, strict, depth = 0) {
       return inlineNodes(node.childNodes || [], false, depth + 1);
     }
     const a = attrs(node);
+    if(node.tagName==='span' && /^[a-f0-9-]{36}$/.test(a['data-note-image'] || ''))return `<span data-note-image="${a['data-note-image']}" contenteditable="false">[Изображение]</span>`;
     const allowed=node.tagName==='a'?['href','title','target','rel','style']:node.tagName==='font'?['color']:['span','mark'].includes(node.tagName)?['style']:[];
     if (strict && Object.keys(a).some(k => !allowed.includes(k))) throw Error('Особое оформление текста.');
     if (node.tagName === 'br') return '<br>';

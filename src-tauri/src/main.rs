@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod external_links;
+mod media;
 mod session_store;
 mod spelling;
 mod synology;
@@ -537,6 +538,23 @@ async fn restore_note_version(
 }
 
 #[tauri::command]
+async fn get_note_image(
+    state: State<'_, AppState>,
+    id: String,
+    file_id: String,
+    version: serde_json::Value,
+    context: Option<synology::AccessContext>,
+) -> Result<media::ImageData, String> {
+    let guard = state.0.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Войдите в NAS.")?
+        .client
+        .note_image(&id, &file_id, version, context.unwrap_or_default())
+        .await
+}
+
+#[tauri::command]
 async fn save_note(
     state: State<'_, AppState>,
     id: String,
@@ -544,13 +562,21 @@ async fn save_note(
     title: String,
     content: String,
     brief: String,
+    images: Option<Vec<media::ImageUpload>>,
 ) -> Result<SavedNote, String> {
     let guard = state.0.lock().await;
     guard
         .as_ref()
         .ok_or("Войдите в NAS.")?
         .client
-        .save_note(&id, expected_version, title, content, brief)
+        .save_note_with_images(
+            &id,
+            expected_version,
+            title,
+            content,
+            brief,
+            images.unwrap_or_default(),
+        )
         .await
 }
 
@@ -654,6 +680,7 @@ fn main() {
             list_notes,
             get_note,
             save_note,
+            get_note_image,
             list_note_versions,
             get_note_version,
             restore_note_version,

@@ -443,3 +443,9 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 .collection-item strong{font-size:13px;font-weight:600}
 
 .sidebar .profile-actions .profile-icon{width:16px;height:16px;flex-shrink:0;color:#637585}
+/* Image previews never fetch the original HTML URL. */
+.note-image{display:inline-flex;flex-direction:column;vertical-align:middle;max-width:100%;min-width:100px;gap:6px;color:#637585}
+.note-image img{display:block;max-width:100%;height:auto;object-fit:contain}
+.note-image-status{display:inline-block;padding:10px;background:#f4f7fa;border:1px solid #c8d5e2;font-size:12px;white-space:normal}
+[data-note-image]{display:inline-block;position:relative;max-width:100%;vertical-align:middle}
+.note-image-remove{position:absolute;right:4px;top:4px;min-width:30px;min-height:30px;padding:0;background:white;border:1px solid #c8d5e2;border-radius:3px;color:#505a64;font-size:22px;cursor:pointer}

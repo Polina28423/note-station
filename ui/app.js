@@ -37,6 +37,7 @@ try { preferredEditor=loadEditorMode(localStorage); } catch {}
 const noteEditor = new NoteEditor({
   mode: preferredEditor,
   openExternal: url => invoke('open_external_url',{url}),
+  loadImage: args => invoke('get_note_image',args),
   save: args => invoke('save_note', args), status, onBusy: setBusy,
   onSaved: result => {
     currentNote = result.note;
@@ -120,7 +121,7 @@ function displayNote(note) {
   if(editable){noteBody.tabIndex=0;noteBody.title='Нажмите на текст, чтобы редактировать';noteBody.setAttribute('aria-label','Текст заметки. Перейдите сюда для редактирования.');}
   else {noteBody.removeAttribute('tabindex');noteBody.removeAttribute('title');noteBody.removeAttribute('aria-label');}
   if (note.encrypted) { $('note-content').textContent = 'Расшифровка пока не поддерживается. Откройте заметку в официальном клиенте.'; copyText = ''; }
-  else { $('note-content').replaceChildren(safeNoteFragment(note.content)); copyText = htmlToText(note.content); }
+  else { $('note-content').replaceChildren(safeNoteFragment(note.content,{note,load:args=>invoke('get_note_image',args)})); copyText = htmlToText(note.content); }
   $('copy-note').disabled = note.encrypted;
   $('note-history').disabled = note.encrypted;
 }

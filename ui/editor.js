@@ -1,4 +1,4 @@
-import { spellingStrings, typographyStrings, linkStrings, pasteStrings, noteTagStrings } from './strings.js';
+import { spellingStrings, typographyStrings, linkStrings, pasteStrings, noteTagStrings, imageStrings } from './strings.js';
 import { snapshotIsCurrent, selectionInSnapshot } from './spelling-adapter.js';
 import { htmlToText } from './content.js';
 import { ClassicSurface } from './classic-editor.js';
@@ -7,14 +7,23 @@ import { normalizeWebUrl } from './links.js';
 import { ALIGNMENTS, normalizeColor, FONT_FAMILIES, FONT_SIZES, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 const $ = id => document.getElementById(id);
 export class NoteEditor {
-  constructor({save,onSaved,status,onBusy,openExternal=()=>{throw Error(linkStrings.unavailable);},mode='blocks'}) {
-    Object.assign(this,{send:save,onSaved,status,onBusy,openExternal});
+  constructor({save,loadImage,onSaved,status,onBusy,openExternal=()=>{throw Error(linkStrings.unavailable);},mode='blocks'}) {
+    Object.assign(this,{send:save,loadImage,onSaved,status,onBusy,openExternal});
     this.active=false;this.saving=false;this.preferredMode=['blocks','classic'].includes(mode)?mode:'blocks';this.mode=this.preferredMode;this.bodyDirty=false;this.saveSequence=0;
     $('edit-title').addEventListener('input',()=>{this.spellingRevision=(this.spellingRevision||0)+1;this.update();});
     $('save-note').addEventListener('click',()=>this.save());
     $('cancel-edit').addEventListener('click',()=>this.leave());
     $('editor-undo').addEventListener('click',()=>this.travel('undo'));
     $('editor-redo').addEventListener('click',()=>this.travel('redo'));
+    if($('insert-image')){$('insert-image').title=imageStrings.add;$('insert-image').setAttribute('aria-label',imageStrings.add);}
+    $('insert-image')?.addEventListener('pointerdown',event=>event.preventDefault());
+    $('insert-image')?.addEventListener('click',()=>{if(this.active&&!this.saving)$('image-file').click();});
+    $('image-file')?.addEventListener('change',async event=>{
+      const file=event.target.files[0];event.target.value='';if(!file||!this.active)return;
+      this.checking=true;this.onBusy(true);this.update();
+      try{await this.surface.insertImage(file);}catch(error){$('save-error').textContent=String(error);}
+      finally{this.checking=false;this.onBusy(false);this.update();}
+    });
     this.pastePlain=false;
     const pasteButton=$('paste-plain');
     pasteButton.setAttribute('aria-label',pasteStrings.label);
@@ -122,6 +131,7 @@ export class NoteEditor {
     const create=()=>{
       $('block-content').hidden=this.mode!=='blocks';$('classic-surface').hidden=this.mode!=='classic';
       this.surface=this.mode==='blocks'?new BlockSurface((error,changed)=>this.change(error,changed),this.openExternal,this.status):new ClassicSurface(()=>this.change(),()=>this.updateFormatting(),this.openExternal,this.status,()=>this.openLink());
+      this.surface.loadImage=this.loadImage;
       this.surface.pastePlain=this.pastePlain;
     };
     create();
@@ -144,6 +154,7 @@ export class NoteEditor {
   update(){
     $('edit-state').textContent=this.saving?'Сохранение…':this.opening?'Открытие редактора…':this.dirty()?'Есть несохранённые изменения':'Нет изменений';
     const locked=this.saving||this.opening||this.historyBusy||this.checking;
+    if($('insert-image'))$('insert-image').disabled=locked||!this.active;
     $('paste-plain').disabled=locked||!this.active;
     $('note-tags-open').disabled=locked||!this.active||this.note?.encrypted;
     const spellingButton=$('check-spelling');if(spellingButton)spellingButton.disabled=locked||!this.active||!this.surface?.spellingSnapshot;
@@ -264,19 +275,22 @@ export class NoteEditor {
     if(!$('edit-title').value.trim()){$('save-error').textContent='Введите заголовок заметки.';$('edit-title').focus();return false;}
     this.saving=true;this.onBusy(true);$('edit-title').disabled=true;$('editor-surface').inert=true;this.update();$('save-error').textContent='';
     try {
-      let content;
+      await this.surface.images?.pending;
+      let content,removedProtected=0;
       if(this.mode==='blocks') {
         const state=await this.surface.content();this.bodyDirty=state.changed;
-        if(state.removed.length) {
-          $('protected-count').textContent=String(state.removed.length);
-          const accepted=await new Promise(resolve=>{this.resolveProtected=resolve;$('protected-dialog').showModal();});
-          this.resolveProtected=null;if(!accepted)return false;
-        }
+        removedProtected=state.removed.length;
         content=this.surface.output(state.data,state.removed);
       } else content=this.surface.output();
+      const removedCount=Math.max(removedProtected,this.surface.images?.removed(content)||0);
+      if(removedCount){
+        $('protected-count').textContent=String(removedCount);
+        const accepted=await new Promise(resolve=>{this.resolveProtected=resolve;$('protected-dialog').showModal();});
+        this.resolveProtected=null;if(!accepted)return false;
+      }
       if(content===this.note.content&&$('edit-title').value===this.note.title){this.bodyDirty=false;return true;}
       this.status('Сохранение заметки…');
-      const result=await this.send({id:this.note.object_id,expectedVersion:this.note.ver,title:$('edit-title').value,content,brief:htmlToText(content).slice(0,300)});
+      const result=await this.send({id:this.note.object_id,expectedVersion:this.note.ver,title:$('edit-title').value,content,brief:htmlToText(content).slice(0,300),images:this.surface.images?.uploads(content) || []});
       this.lastSaved=result.note;this.saveSequence++;this.close();
       try {this.onSaved(result);} catch {this.status('Заметка сохранена, но не удалось обновить её отображение.',true);}
       return true;

@@ -54,7 +54,7 @@ export function bindNoteHistory({ invoke, getNote, canOpen, leave, setBusy, onRe
             const preview = await invoke('get_note_version', { id: note.object_id, version: version.ver });
             if (previewToken !== request) return;
             $('history-note-title').textContent = preview.title;
-            $('history-preview').replaceChildren(safeNoteFragment(preview.content));
+            $('history-preview').replaceChildren(safeNoteFragment(preview.content,{note:{...preview,ver:version.ver},load:args=>invoke('get_note_image',args)}));
             selected = version.ver;
             $('history-restore').disabled = note.ver == null;
             message(strings.ready);

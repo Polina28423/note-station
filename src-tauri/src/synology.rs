@@ -1,8 +1,13 @@
+use crate::media::{image_data, ImageData, ImageUpload, MAX_IMAGE, MAX_UPLOAD};
 use reqwest::{redirect::Policy, Certificate, Client, ClientBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{collections::HashMap, time::Duration};
 use url::Url;
+
+#[cfg(test)]
+#[path = "media_tests.rs"]
+mod media_tests;
 
 const SESSION: &str = "notestation";
 const MAX_RESPONSE: usize = 16 * 1024 * 1024;
@@ -251,6 +256,30 @@ pub struct Note {
     pub content: String,
     pub encrypted: bool,
     pub tags: Option<Vec<String>>,
+    pub images: Vec<ImageReference>,
+    pub access: AccessContext,
+}
+#[derive(Serialize)]
+pub struct ImageReference {
+    pub file_id: String,
+    pub reference: String,
+}
+fn image_references(data: &Value) -> Vec<ImageReference> {
+    data.get("attachment")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|items| items.iter())
+        .filter_map(|(id, file)| {
+            let reference = file.get("ref")?.as_str()?;
+            if id.len() > 1024 || reference.len() > 1024 {
+                return None;
+            }
+            Some(ImageReference {
+                file_id: id.clone(),
+                reference: reference.into(),
+            })
+        })
+        .collect()
 }
 #[derive(Serialize)]
 pub struct NoteTagState {
@@ -473,7 +502,7 @@ impl NasClient {
         fields: Vec<(String, String)>,
         optional_data: bool,
     ) -> Result<Value, String> {
-        let mut response = self.http.post(endpoint(&self.base, path)?)
+        let response = self.http.post(endpoint(&self.base, path)?)
             .form(&fields).send().await.map_err(|e| {
                 // Never expose reqwest error URLs, request bodies or server diagnostics.
                 if e.is_timeout() { "NAS не ответил вовремя." }
@@ -481,6 +510,13 @@ impl NasClient {
                 else if e.is_connect() { "Не удалось подключиться к NAS. Проверьте сеть и сертификат. Для самоподписанного выберите публичный PEM-файл; адрес NAS должен совпадать с именем в сертификате, срок действия не должен истечь." }
                 else { "Ошибка запроса к NAS." }.to_string()
             })?;
+        Self::read_json(response, optional_data).await
+    }
+
+    async fn read_json(
+        mut response: reqwest::Response,
+        optional_data: bool,
+    ) -> Result<Value, String> {
         if !response.status().is_success() {
             return Err(format!("NAS вернул HTTP {}.", response.status().as_u16()));
         }
@@ -1032,6 +1068,12 @@ impl NasClient {
                     .into()
             },
             encrypted,
+            images: if encrypted {
+                vec![]
+            } else {
+                image_references(&data)
+            },
+            access: context,
             tags: data
                 .get("tag")
                 .and_then(|value| serde_json::from_value::<Vec<String>>(value.clone()).ok()),
@@ -1046,6 +1088,38 @@ impl NasClient {
         content: String,
         brief: String,
     ) -> Result<SavedNote, String> {
+        self.save_note_with_images(id, expected_version, title, content, brief, vec![])
+            .await
+    }
+
+    pub async fn save_note_with_images(
+        &self,
+        id: &str,
+        expected_version: Value,
+        title: String,
+        content: String,
+        brief: String,
+        images: Vec<ImageUpload>,
+    ) -> Result<SavedNote, String> {
+        if images.len() > 20 {
+            return Err("Можно добавить не более 20 изображений за одно сохранение.".into());
+        }
+        let mut uploads = Vec::new();
+        let mut total = 0;
+        let mut references = std::collections::HashSet::new();
+        for image in images {
+            let (bytes, mime) = image.decode()?;
+            total += bytes.len();
+            if total > MAX_UPLOAD
+                || !references.insert(image.reference.clone())
+                || !content.contains(&format!("ref=\"{}\"", image.reference))
+            {
+                return Err(
+                    "Превышен общий размер 20 МБ или повреждены ссылки изображений.".into(),
+                );
+            }
+            uploads.push((image, bytes, mime));
+        }
         validate_note_update(id, &expected_version, &title, &content, &brief)?;
         self.api("SYNO.NoteStation.Note", 3)?;
         let current = self.note(id).await?;
@@ -1055,25 +1129,24 @@ impl NasClient {
         if current.ver.as_ref() != Some(&expected_version) {
             return Err("Заметка изменена на NAS с момента открытия. Скопируйте свой текст, отмените редактирование и откройте свежую версию.".into());
         }
-        let result = self
-            .call_version(
-                "SYNO.NoteStation.Note",
-                3,
-                "set",
-                vec![
-                    ("object_id".into(), json!(id)),
-                    ("ver".into(), expected_version),
-                    ("check_conflict".into(), json!(true)),
-                    ("title".into(), json!(title)),
-                    ("content".into(), json!(content)),
-                    ("brief".into(), json!(brief)),
-                    (
-                        "commit_msg".into(),
-                        json!({"device":"desktop","listable":true}),
-                    ),
-                ],
-            )
-            .await?;
+        let fields = vec![
+            ("object_id".into(), json!(id)),
+            ("ver".into(), expected_version),
+            ("check_conflict".into(), json!(true)),
+            ("title".into(), json!(title)),
+            ("content".into(), json!(content)),
+            ("brief".into(), json!(brief)),
+            (
+                "commit_msg".into(),
+                json!({"device":"desktop","listable":true}),
+            ),
+        ];
+        let result = if uploads.is_empty() {
+            self.call_version("SYNO.NoteStation.Note", 3, "set", fields)
+                .await?
+        } else {
+            self.upload_note(fields, uploads).await?
+        };
         // A successful write must not be reported as a failed write if the
         // follow-up read is unavailable: that could encourage duplicate retries.
         match self.note(id).await {
@@ -1082,8 +1155,123 @@ impl NasClient {
                 Ok(SavedNote { note, notice: newer.then(|| "После сохранения появилась другая версия заметки. Показана актуальная версия с NAS.".into()) })
             },
             Err(_) => Ok(SavedNote { note: Note { object_id:id.into(), title, content, encrypted:false,
-                ver: result.pointer("/data/0/ver").cloned(), tags:None }, notice: Some("NAS подтвердил сохранение, но повторное чтение не удалось. Обновите библиотеку перед дальнейшим редактированием.".into()) }),
+                ver: result.pointer("/data/0/ver").cloned(), tags:None, images:vec![], access:AccessContext::default() }, notice: Some("NAS подтвердил сохранение, но повторное чтение не удалось. Обновите библиотеку перед дальнейшим редактированием.".into()) }),
         }
+    }
+
+    async fn upload_note(
+        &self,
+        mut fields: Vec<(String, Value)>,
+        uploads: Vec<(ImageUpload, Vec<u8>, &'static str)>,
+    ) -> Result<Value, String> {
+        let info = self.api("SYNO.NoteStation.Note", 3)?;
+        let boundary = format!(
+            "note-station-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|_| "Ошибка системного времени.")?
+                .as_nanos()
+        );
+        if uploads.iter().any(|(_, bytes, _)| {
+            bytes
+                .windows(boundary.len())
+                .any(|w| w == boundary.as_bytes())
+        }) {
+            return Err("Не удалось подготовить изображения. Повторите сохранение.".into());
+        }
+        let mut body = Vec::new();
+        let mut attachments = Vec::new();
+        for (index, (image, bytes, mime)) in uploads.into_iter().enumerate() {
+            let name = format!("image{index}");
+            // Keep Unicode filenames, but never allow them to alter multipart headers.
+            let filename: String = image
+                .name
+                .chars()
+                .map(|c| {
+                    if matches!(c, '"' | '\\' | '/') {
+                        '_'
+                    } else {
+                        c
+                    }
+                })
+                .collect();
+            body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"; filename=\"{filename}\"\r\nContent-Type: {mime}\r\n\r\n").as_bytes());
+            body.extend_from_slice(&bytes);
+            body.extend_from_slice(b"\r\n");
+            attachments.push(json!({"action":"create","format":"raw","name":name,"ref":image.reference,"rotate":true}));
+        }
+        fields.push(("attachment".into(), json!(attachments)));
+        let routing = encode_entry(vec![
+            ("api".into(), json!("SYNO.NoteStation.Note")),
+            ("version".into(), json!(3)),
+            ("method".into(), json!("set")),
+            ("_sid".into(), json!(self.session_id()?)),
+        ]);
+        for (name, value) in fields {
+            body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n").as_bytes());
+        }
+        body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+        let response = self.http.post(endpoint(&self.base,&info.path)?).query(&routing).header(reqwest::header::CONTENT_TYPE,format!("multipart/form-data; boundary={boundary}")).body(body).send().await.map_err(|_| "Не удалось подтвердить загрузку изображений. Не повторяйте сохранение автоматически; проверьте заметку на NAS.")?;
+        Self::read_json(response, false).await
+    }
+
+    pub async fn note_image(
+        &self,
+        id: &str,
+        file_id: &str,
+        version: Value,
+        context: AccessContext,
+    ) -> Result<ImageData, String> {
+        if id.is_empty()
+            || id.len() > 1024
+            || file_id.is_empty()
+            || file_id.len() > 1024
+            || file_id.chars().any(char::is_control)
+        {
+            return Err("Некорректный идентификатор изображения.".into());
+        }
+        validate_note_update(id, &version, "image", "", "")?;
+        let info = self.api("SYNO.NoteStation.Note", 3)?;
+        let mut params = context.params()?;
+        params.extend(vec![
+            ("api".into(), json!("SYNO.NoteStation.Note")),
+            ("version".into(), json!(3)),
+            ("method".into(), json!("download")),
+            ("object_id".into(), json!(id)),
+            ("file_id".into(), json!(file_id)),
+            ("ver".into(), version),
+            ("format".into(), json!("raw")),
+            ("_sid".into(), json!(self.session_id()?)),
+        ]);
+        let fields = encode_entry(params);
+        let mut response = self
+            .http
+            .post(endpoint(&self.base, &info.path)?)
+            .form(&fields)
+            .send()
+            .await
+            .map_err(|_| "Не удалось загрузить изображение с NAS.")?;
+        if !response.status().is_success() {
+            return Err("NAS не предоставил изображение.".into());
+        }
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_IMAGE as u64)
+        {
+            return Err("Изображение превышает 10 МБ.".into());
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|_| "Не удалось прочитать изображение.")?
+        {
+            if bytes.len() + chunk.len() > MAX_IMAGE {
+                return Err("Изображение превышает 10 МБ.".into());
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        image_data(&bytes)
     }
 
     pub async fn logout(&self) -> Result<(), String> {
