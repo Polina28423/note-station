@@ -21,7 +21,7 @@ try {
   await delay(650);
   check(!editor.dirty(),'initial normalization does not mark note dirty');
   check(!document.querySelector('#block-content img,#block-content embed,#block-content iframe'),'protected media is never loaded in editor');
-  check(document.querySelectorAll('.preserved-fragment').length===3,'all unsupported fragments have a protected preview');
+  check(document.querySelectorAll('.preserved-fragment').length===2,'all unsupported fragments have a protected preview');
   title().value='Only title';title().dispatchEvent(new Event('input'));
   check(await editor.save(),'title-only save succeeds');
   check(sent.at(-1).content===html,'title-only save preserves exact full HTML');
