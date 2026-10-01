@@ -1,12 +1,13 @@
 import { ImageSession } from './images.js';
 import { bindExternalLinks, updateLink } from './links.js';
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
-import { EditorDocument, documentSignature } from './editor-document.js';
+import { EditorDocument, documentSignature, cleanInline } from './editor-document.js';
 import { safeNoteFragment } from './content.js';
 import { focusContent, editableTarget } from './editor-focus.js';
 import { ALIGNMENTS, normalizeColor, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 
 const INLINE_RULES={b:true,strong:true,i:true,em:true,u:true,s:true,strike:true,del:true,a:{href:true,title:true},br:true,code:true,mark:{style:true},span:{style:true,'data-note-image':true,contenteditable:true},font:{color:true}};
+const TEXT_FLOW_RULES={...INLINE_RULES,div:{style:true,'data-empty':true},p:{style:true,'data-empty':true}};
 const $=id=>document.getElementById(id);
 export class BlockSurface {
   constructor(onChange,onOpenLink=()=>{},onLinkError=()=>{}) {this.openExternal=onOpenLink;this.linkError=onLinkError;this.notify=onChange;this.ready=false;this.history=[];this.historyIndex=-1;this.queue=Promise.resolve();}
@@ -47,7 +48,7 @@ export class BlockSurface {
       validate(data){return typeof data.key==='string';}
     }
     class Paragraph extends lib.Paragraph {
-      static get sanitize(){return {text:INLINE_RULES};}
+      static get sanitize(){return {text:TEXT_FLOW_RULES};}
       constructor(options){super(options);this.source=surface.document.records.get(options.block.id)?.source || '<p>';}
       render(){const element=super.render();element.dataset.sourceTag=/^\s*<p[\s>]/i.test(this.source)?'p':'div';return element;}
     }
@@ -149,7 +150,15 @@ export class BlockSurface {
     this.baseline=documentSignature(snapshot.blocks);this.history=[snapshot];this.historySizes=new WeakMap([[snapshot,JSON.stringify(snapshot).length*2]]);this.historyBytes=this.historySizes.get(snapshot);this.historyIndex=0;this.ready=true;this.images.paint(holder);
   }
   async snapshot() {
+    // Editor.js unwraps nested block elements during sanitization. Preserve their
+    // line structure with the application's allowlist before the tool save runs.
+    const textFlows=new Map();
+    for(let i=0;i<this.editor.blocks.getBlocksCount();i++){
+      const block=this.editor.blocks.getBlockByIndex(i),paragraph=block.name==='paragraph'&&block.holder.querySelector('.ce-paragraph');
+      if(paragraph&&paragraph.querySelector('div,p'))textFlows.set(block.id,cleanInline(paragraph.innerHTML));
+    }
     const result=await this.editor.save();
+    for(const block of result.blocks)if(textFlows.has(block.id))block.data.text=textFlows.get(block.id);
     for(const block of result.blocks)if(block.type!=='code')block.data=this.images.normalize(block.data);
     const live=Array.from({length:this.editor.blocks.getBlocksCount()},(_,i)=>this.editor.blocks.getBlockByIndex(i).id);
     if(result.blocks.length!==live.length||result.blocks.some((b,i)=>b.id!==live[i]))throw Error('Один из блоков не удалось сохранить. Заполните пустой блок или удалите его явно.');

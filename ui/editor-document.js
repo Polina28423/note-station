@@ -20,21 +20,26 @@ export function safeLink(href) {
   if (/^(?:https?:|mailto:|tel:)/i.test(value) || /^(?:#|\/[^/]|\.\.?\/)/.test(value)) return value;
   return '';
 }
-function inlineNodes(nodes, strict, depth = 0) {
+function inlineNodes(nodes, strict, depth = 0, allowFlow = false) {
   if (depth > 30) throw Error('Слишком глубокая разметка текста.');
   return nodes.map(node => {
     if (node.nodeName === '#text') return esc(node.value);
+    if(allowFlow && ['div','p'].includes(node.tagName)){
+      if(strict)onlyAttrs(node,['style']);
+      const style=styleText(safeStyles(attrs(node).style,strict));
+      return `<${node.tagName}${style?` style="${style}"`:''}>${inlineNodes(node.childNodes || [],strict,depth+1,true)}</${node.tagName}>`;
+    }
     if (!INLINE.has(node.tagName)) {
       if (strict) throw Error('Неподдерживаемый встроенный элемент.');
       if (['script','style','iframe','object','embed','img','svg','math','input'].includes(node.tagName)) return '';
-      return inlineNodes(node.childNodes || [], false, depth + 1);
+      return inlineNodes(node.childNodes || [], false, depth + 1, allowFlow);
     }
     const a = attrs(node);
     if(node.tagName==='span' && /^[a-f0-9-]{36}$/.test(a['data-note-image'] || ''))return `<span data-note-image="${a['data-note-image']}" contenteditable="false">[Изображение]</span>`;
     const allowed=node.tagName==='a'?['href','title','target','rel','style']:node.tagName==='font'?['color']:['span','mark'].includes(node.tagName)?['style']:[];
     if (strict && Object.keys(a).some(k => !allowed.includes(k))) throw Error('Особое оформление текста.');
     if (node.tagName === 'br') return '<br>';
-    const body = inlineNodes(node.childNodes || [], strict, depth + 1);
+    const body = inlineNodes(node.childNodes || [], strict, depth + 1, allowFlow);
     if(['span','font','mark'].includes(node.tagName)){
       const styles=safeStyles(a.style,strict);
       if(styles['text-align']){if(strict)throw Error('Выравнивание встроенного элемента.');delete styles['text-align'];}
@@ -57,7 +62,7 @@ function inlineNodes(nodes, strict, depth = 0) {
 }
 export function cleanInline(html) {
   if (typeof html !== 'string' || html.length > 8 * 1024 * 1024) throw Error('Некорректный текст блока.');
-  return inlineNodes(parseFragment(html).childNodes, false);
+  return inlineNodes(parseFragment(html).childNodes, false, 0, true);
 }
 function onlyAttrs(node, allowed = []) {
   if ((node.attrs || []).some(a => !allowed.includes(a.name))) throw Error('Особые атрибуты элемента.');
@@ -125,7 +130,7 @@ function convertBase(node) {
     return {type:'quote',data:{text:inlineNodes(parts,true),caption,alignment:style?'center':'left'}};
   }
   onlyAttrs(node);
-  if (['p','div'].includes(tag)) return {type:'paragraph',data:{text:inlineNodes(node.childNodes || [],true)}};
+  if (['p','div'].includes(tag)) return {type:'paragraph',data:{text:inlineNodes(node.childNodes || [],true,0,true)}};
   if (/^h[1-6]$/.test(tag)) {
     const value=inlineNodes(node.childNodes || [],true);
     if (!value.trim()) throw Error('Пустой заголовок.');
@@ -169,7 +174,10 @@ function renderBlockBody(block) {
   const d=block.data;
   if (!d || typeof d!=='object') throw Error('Отсутствуют данные блока.');
   switch(block.type) {
-    case 'paragraph':return `<p>${cleanInline(d.text)}</p>`;
+    case 'paragraph':{
+      const content=cleanInline(d.text),tag=/<(?:div|p)(?:\s|>)/i.test(content)?'div':'p';
+      return `<${tag}>${content}</${tag}>`;
+    }
     case 'header':if(![1,2,3,4,5,6].includes(d.level))throw Error('Некорректный заголовок.');return `<h${d.level}>${cleanInline(d.text)}</h${d.level}>`;
     case 'quote':if(!['left','center',undefined].includes(d.alignment))throw Error('Некорректная цитата.');return `<blockquote>${cleanInline(d.text)}${d.caption?`<footer>${cleanInline(d.caption)}</footer>`:''}</blockquote>`;
     case 'code':if(typeof d.code!=='string')throw Error('Некорректный код.');return `<pre><code>${esc(d.code)}</code></pre>`;
