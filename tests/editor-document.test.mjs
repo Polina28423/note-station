@@ -5,6 +5,23 @@ import { normalizeColor, safeStyles, normalizeFontFamily, normalizeFontSize } fr
 const load = html => { const doc=new EditorDocument(html);doc.bindBaseline(doc.blocks);return doc; };
 const clone = value => structuredClone(value);
 
+test('nested text containers retain line structure and links as editable content',()=>{
+  const html='<div>Описание элементов<div><a href="https://composeunstyled.com">https://composeunstyled.com</a></div></div><div>Примеры</div><div><a href="https://github.com/android/compose-samples">Примеры Compose</a><div><a href="https://www.sinasamaki.com/pager-animations/">Анимации</a></div><div>Очень интересный сайт<div><a href="https://kotlinandroid.org/kotlin-android/">Kotlin Android</a></div></div></div>';
+  const doc=load(html);assert.equal(doc.fragments.size,0);assert.equal(doc.blocks.length,3);assert.ok(doc.blocks.every(block=>block.type==='paragraph'));
+  assert.equal(doc.serialize(doc.blocks),html);
+  const blocks=clone(doc.blocks);blocks[2].data.text=blocks[2].data.text.replace('Очень интересный сайт','Полезный сайт');
+  const changed=doc.serialize(blocks);assert.ok(changed.startsWith(html.slice(0,html.indexOf('<div><a href="https://github'))));assert.ok(changed.includes('<div>Полезный сайт<div><a href="https://kotlinandroid.org/kotlin-android/">Kotlin Android</a></div></div>'));
+  assert.equal((changed.match(/href=/g)||[]).length,4);assert.ok(!changed.includes('<p><div>'));assert.equal(load(changed).fragments.size,0);
+});
+
+test('nested text container styling and explicit empty lines survive an edit',()=>{
+  const html='<div><div style="text-align:right;color:red">Line</div><div><br></div><div><div>Last</div></div></div>';
+  const doc=load(html);assert.equal(doc.fragments.size,0);assert.equal(doc.serialize(doc.blocks),html);
+  const blocks=clone(doc.blocks);blocks[0].data.text=blocks[0].data.text.replace('Last','Edited');
+  assert.match(doc.serialize(blocks),/<div style="text-align:right;color:#ff0000">Line<\/div><div><br><\/div><div><div>Edited<\/div><\/div>/);
+  for(const source of ['<div><div class="custom">Text</div></div>','<div><div onclick="bad()">Text</div></div>','<div><div><iframe src="x"></iframe></div></div>'])assert.equal(load(source).blocks[0].type,'preserved');
+});
+
 test('standalone links and adjacent inline text are editable without splitting their flow',()=>{
   const html='<div><a href="https://example.org/one">First</a></div><div>Second</div><a href="https://example.org/three">Third</a>';
   const doc=load(html);assert.deepEqual(doc.blocks.map(block=>block.type),['paragraph','paragraph','paragraph']);
