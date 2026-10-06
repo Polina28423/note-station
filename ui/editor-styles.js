@@ -24,13 +24,24 @@ export function normalizeColor(value){
   const channels=rgb.slice(2,5).map(Number),alpha=rgb[5]===undefined?1:Number(rgb[5]);
   return alpha===1?'#'+channels.map(x=>x.toString(16).padStart(2,'0')).join(''):`rgba(${channels.join(',')},${alpha})`;
 }
+function textPresentation(key,value){
+  if(key==='font-weight'&&/^(?:normal|bold|bolder|lighter|[1-9]00)$/.test(value))return value;
+  if(key==='font-style'&&['normal','italic','oblique'].includes(value))return value;
+  if(['text-decoration','text-decoration-line'].includes(key)){
+    if(value==='none')return value;
+    const parts=value.split(/\s+/);
+    if(parts.length<=3&&new Set(parts).size===parts.length&&parts.every(part=>['underline','line-through','overline'].includes(part)))return parts.join(' ');
+  }
+  return '';
+}
 export function safeStyles(value,strict=false){
   const result={};if(!value)return result;
   if(typeof value!=='string'||value.length>2048){if(strict)throw Error('Сложное оформление.');return result;}
   for(const part of value.split(';')){
     if(!part.trim())continue;
     const colon=part.indexOf(':'),key=part.slice(0,colon).trim().toLowerCase(),raw=part.slice(colon+1).trim();
-    const clean=key==='text-align'&&ALIGNMENTS.includes(raw.toLowerCase())?raw.toLowerCase():['color','background-color'].includes(key)?normalizeColor(raw):key==='font-family'?normalizeFontFamily(raw):key==='font-size'?normalizeFontSize(raw):'';
+    const lower=raw.toLowerCase();
+    const clean=key==='text-align'&&ALIGNMENTS.includes(lower)?lower:['color','background-color'].includes(key)?normalizeColor(raw):key==='font-family'?normalizeFontFamily(raw):key==='font-size'?normalizeFontSize(raw):textPresentation(key,lower);
     if(colon<1||!clean){if(strict)throw Error('Неподдерживаемое оформление.');continue;}
     result[key]=clean;
   }

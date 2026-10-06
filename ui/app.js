@@ -1,3 +1,4 @@
+import { bindNoteHtml } from './note-html.js';
 import { bindCollections } from './collections.js';
 import { bindNoteTags } from './note-tags.js';
 import { bindSettingsTabs } from './settings.js';
@@ -49,6 +50,7 @@ const noteEditor = new NoteEditor({
 });
 bindSpelling({editor:noteEditor,invoke});
 let currentNote = null, selectedAccount = null;
+const noteHtml=bindNoteHtml({getNote:()=>noteEditor.active?noteEditor.note:currentNote,editor:noteEditor,canOpen:()=>!busy});
 const collections=bindCollections({
   getTaskNotes:()=>notes.map(note=>({...note,title:[note.title || 'Без названия',notebooks.find(book=>book.object_id===note.parent_id)?.title].filter(Boolean).join(' · ')})),
   invoke, prepare:async()=>!busy&&await noteEditor.leave(),
@@ -112,6 +114,7 @@ $('apply-settings').addEventListener('click',async()=>{
   status(persisted?'Настройки сохранены.':'Редактор выбран до закрытия приложения: настройки не удалось сохранить.',!persisted);
 });
 function displayNote(note) {
+  noteHtml.update();
   noteTags.display(note);
   $('reader-document').hidden = noteEditor.active; $('reader-empty').hidden = true;
   $('note-title').textContent = note.title || 'Без названия';
@@ -207,6 +210,7 @@ function status(message, error = false) {
 }
 function setBusy(value) {
   busy = value;
+  noteHtml.update();
   $('note-history').disabled = value || !currentNote || currentNote.encrypted;
   $('note-tags-open').disabled=value||!noteEditor.active||!currentNote||currentNote.encrypted;
   for (const id of ['switch-account', 'add-account', 'back-to-accounts', 'startup-accounts', 'connect', 'refresh', 'logout', 'certificate', 'clear-certificate', 'connection-mode', 'insecure-confirm', 'remember-session', 'restore-session', 'forget-session', 'startup-retry', 'startup-login', 'startup-logout', 'open-settings']) $(id).disabled = value;
@@ -214,7 +218,7 @@ function setBusy(value) {
 function clearReader() {
   noteTags.reset();noteTags.display(null);
   noteRequest++; selectedId = ''; copyText = ''; currentNote = null; noteEditor.close();
-  $('note-history').disabled = true;
+  $('note-history').disabled = true;noteHtml.reset();
   $('reader-empty').hidden = false; $('reader-document').hidden = true;
   $('note-title').textContent = ''; $('note-meta').textContent = '';
   $('note-content').replaceChildren(); $('copy-note').disabled = true;
@@ -363,7 +367,7 @@ async function openNote(id) {
   if (busy || !await noteEditor.leave()) return;
   const request = ++noteRequest;
   currentNote = null;
-  $('note-history').disabled = true;
+  $('note-history').disabled = true;noteHtml.reset();
   selectedId = id; copyText = ''; renderNotes();
   $('reader-empty').hidden = true; $('reader-document').hidden = false;
   $('note-title').textContent = 'Загрузка…'; $('note-content').replaceChildren(); $('copy-note').disabled = true;
@@ -394,7 +398,7 @@ $('copy-note').addEventListener('click', async () => {
   catch { status('Не удалось скопировать. Выделите текст и нажмите Ctrl+C.', true); }
 });
 window.addEventListener('keydown', event => {
-  if ($('workspace').hidden) return;
+  if ($('workspace').hidden||$('note-html-dialog').open) return;
   if (event.key === 'Escape' && !noteEditor.active) setFocusMode(false);
   if (!noteEditor.active && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault(); (view === 'notebooks' ? $('notebook-search') : view==='collections'?$('collection-search'):$('search')).focus();

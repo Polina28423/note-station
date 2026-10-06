@@ -2,6 +2,7 @@ import { parseFragment } from './vendor/editorjs/html-parser.js';
 import { ALIGNMENTS, normalizeColor, safeStyles, styleText } from './editor-styles.js';
 
 const INLINE = new Set(['b','strong','i','em','u','s','strike','del','a','br','code','mark','span','font']);
+export const TEXT_FLOW_TAGS=['div','p','h1','h2','h3','h4','h5','h6'];
 const text = node => node.nodeName === '#text' ? node.value : (node.childNodes || []).map(text).join('');
 const esc = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const attrs = node => Object.fromEntries((node.attrs || []).map(a => [a.name,a.value]));
@@ -24,7 +25,7 @@ function inlineNodes(nodes, strict, depth = 0, allowFlow = false) {
   if (depth > 30) throw Error('Слишком глубокая разметка текста.');
   return nodes.map(node => {
     if (node.nodeName === '#text') return esc(node.value);
-    if(allowFlow && ['div','p'].includes(node.tagName)){
+    if(allowFlow && TEXT_FLOW_TAGS.includes(node.tagName)){
       if(strict)onlyAttrs(node,['style']);
       const style=styleText(safeStyles(attrs(node).style,strict));
       return `<${node.tagName}${style?` style="${style}"`:''}>${inlineNodes(node.childNodes || [],strict,depth+1,true)}</${node.tagName}>`;
@@ -36,7 +37,7 @@ function inlineNodes(nodes, strict, depth = 0, allowFlow = false) {
     }
     const a = attrs(node);
     if(node.tagName==='span' && /^[a-f0-9-]{36}$/.test(a['data-note-image'] || ''))return `<span data-note-image="${a['data-note-image']}" contenteditable="false">[Изображение]</span>`;
-    const allowed=node.tagName==='a'?['href','title','target','rel','style']:node.tagName==='font'?['color']:['span','mark'].includes(node.tagName)?['style']:[];
+    const allowed=node.tagName==='a'?['href','title','target','rel','style']:node.tagName==='font'?['color']:node.tagName==='br'?[]:['style'];
     if (strict && Object.keys(a).some(k => !allowed.includes(k))) throw Error('Особое оформление текста.');
     if (node.tagName === 'br') return '<br>';
     const body = inlineNodes(node.childNodes || [], strict, depth + 1, allowFlow);
@@ -57,7 +58,10 @@ function inlineNodes(nodes, strict, depth = 0, allowFlow = false) {
       const style=styleText(styles),formatted=style?`<span style="${style}">${body}</span>`:body;
       return href ? `<a href="${esc(href)}"${a.title ? ` title="${esc(a.title)}"` : ''}>${formatted}</a>` : formatted;
     }
-    return `<${node.tagName}>${body}</${node.tagName}>`;
+    const styles=safeStyles(a.style,strict);
+    if(styles['text-align']){if(strict)throw Error('Выравнивание встроенного элемента.');delete styles['text-align'];}
+    const style=styleText(styles);
+    return `<${node.tagName}${style?` style="${style}"`:''}>${body}</${node.tagName}>`;
   }).join('');
 }
 export function cleanInline(html) {
@@ -175,7 +179,7 @@ function renderBlockBody(block) {
   if (!d || typeof d!=='object') throw Error('Отсутствуют данные блока.');
   switch(block.type) {
     case 'paragraph':{
-      const content=cleanInline(d.text),tag=/<(?:div|p)(?:\s|>)/i.test(content)?'div':'p';
+      const content=cleanInline(d.text),tag=/<(?:div|p|h[1-6])(?:\s|>)/i.test(content)?'div':'p';
       return `<${tag}>${content}</${tag}>`;
     }
     case 'header':if(![1,2,3,4,5,6].includes(d.level))throw Error('Некорректный заголовок.');return `<h${d.level}>${cleanInline(d.text)}</h${d.level}>`;

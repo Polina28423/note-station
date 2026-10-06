@@ -1,13 +1,13 @@
 import { ImageSession } from './images.js';
 import { bindExternalLinks, updateLink } from './links.js';
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
-import { EditorDocument, documentSignature, cleanInline } from './editor-document.js';
+import { EditorDocument, documentSignature, cleanInline, TEXT_FLOW_TAGS } from './editor-document.js';
 import { safeNoteFragment } from './content.js';
 import { focusContent, editableTarget } from './editor-focus.js';
 import { ALIGNMENTS, normalizeColor, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 
-const INLINE_RULES={b:true,strong:true,i:true,em:true,u:true,s:true,strike:true,del:true,a:{href:true,title:true},br:true,code:true,mark:{style:true},span:{style:true,'data-note-image':true,contenteditable:true},font:{color:true}};
-const TEXT_FLOW_RULES={...INLINE_RULES,div:{style:true,'data-empty':true},p:{style:true,'data-empty':true}};
+const INLINE_RULES={b:{style:true},strong:{style:true},i:{style:true},em:{style:true},u:{style:true},s:{style:true},strike:{style:true},del:{style:true},a:{href:true,title:true},br:true,code:{style:true},mark:{style:true},span:{style:true,'data-note-image':true,contenteditable:true},font:{color:true}};
+const TEXT_FLOW_RULES={...INLINE_RULES,...Object.fromEntries(TEXT_FLOW_TAGS.map(tag=>[tag,{style:true,'data-empty':true}]))};
 const $=id=>document.getElementById(id);
 export class BlockSurface {
   constructor(onChange,onOpenLink=()=>{},onLinkError=()=>{}) {this.openExternal=onOpenLink;this.linkError=onLinkError;this.notify=onChange;this.ready=false;this.history=[];this.historyIndex=-1;this.queue=Promise.resolve();}
@@ -155,7 +155,7 @@ export class BlockSurface {
     const textFlows=new Map();
     for(let i=0;i<this.editor.blocks.getBlocksCount();i++){
       const block=this.editor.blocks.getBlockByIndex(i),paragraph=block.name==='paragraph'&&block.holder.querySelector('.ce-paragraph');
-      if(paragraph&&paragraph.querySelector('div,p'))textFlows.set(block.id,cleanInline(paragraph.innerHTML));
+      if(paragraph&&paragraph.querySelector(TEXT_FLOW_TAGS.join(',')))textFlows.set(block.id,cleanInline(paragraph.innerHTML));
     }
     const result=await this.editor.save();
     for(const block of result.blocks)if(textFlows.has(block.id))block.data.text=textFlows.get(block.id);

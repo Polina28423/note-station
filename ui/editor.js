@@ -1,4 +1,4 @@
-import { spellingStrings, typographyStrings, linkStrings, pasteStrings, noteTagStrings, imageStrings } from './strings.js';
+import { spellingStrings, typographyStrings, linkStrings, pasteStrings, noteTagStrings, imageStrings, htmlStrings } from './strings.js';
 import { snapshotIsCurrent, selectionInSnapshot } from './spelling-adapter.js';
 import { htmlToText } from './content.js';
 import { ClassicSurface } from './classic-editor.js';
@@ -96,7 +96,7 @@ export class NoteEditor {
     window.addEventListener('beforeunload',e=>{if(this.dirty()||this.saving){e.preventDefault();e.returnValue='';}});
     window.addEventListener('keydown',e=>{
       if(!this.active)return;
-      if($('format-link-dialog').open||$('style-color-dialog').open||$('spelling-dialog')?.open||$('note-tags-dialog')?.open){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s')e.preventDefault();return;}
+      if($('format-link-dialog').open||$('style-color-dialog').open||$('spelling-dialog')?.open||$('note-tags-dialog')?.open||$('note-html-dialog')?.open){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s')e.preventDefault();return;}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();this.openLink();return;}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();this.save();}
       if(this.mode==='blocks'&&(e.ctrlKey||e.metaKey)&&e.target.closest?.('#block-content')&&['z','y'].includes(e.key.toLowerCase())) {
@@ -296,6 +296,15 @@ export class NoteEditor {
       return true;
     } catch(error){$('save-error').textContent=String(error);this.bodyDirty=true;this.status('Не удалось сохранить заметку. Изменения остаются в редакторе.',true);return false;}
     finally{this.saving=false;$('edit-title').disabled=false;$('editor-surface').inert=false;this.onBusy(false);this.update();}
+  }
+  async htmlSnapshot(){
+    if(!this.active||this.saving||this.opening||this.historyBusy||this.checking)throw Error(htmlStrings.busy);
+    const surface=this.surface;await surface.images?.pending;
+    if(surface!==this.surface||!this.active)throw Error(htmlStrings.closed);
+    if(this.mode==='classic')return surface.output();
+    const state=await surface.content();
+    if(surface!==this.surface||!this.active)throw Error(htmlStrings.closed);
+    return surface.output(state.data,state.removed);
   }
   resolveDialog(choice){$('unsaved-dialog').close();this.resolve?.(choice);}
   async leave(){

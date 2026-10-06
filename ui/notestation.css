@@ -92,7 +92,11 @@ body.connected #status.error{background:#fff0eb;color:#a14335}
 .reader-document>h1{font-size:24px;font-weight:600;letter-spacing:0;line-height:1.4;margin:0 0 10px;color:#505a64}
 #note-meta{font-size:11px;border-color:#d7e1eb;padding-bottom:15px;margin-bottom:22px;color:#96a0aa}
 #note-content{color:#505a64;font-family:Arial,"Segoe UI",sans-serif;font-size:15px;line-height:1.7;max-width:none}
-.note-prose h1,.note-prose h2,.note-prose h3,.note-prose h4{color:#505a64;font-family:Arial,"Segoe UI",sans-serif}
+.note-prose h1,.note-prose h2,.note-prose h3,.note-prose h4,#block-content .ce-paragraph :is(h1,h2,h3,h4){color:#505a64;font-family:Arial,"Segoe UI",sans-serif}
+#block-content .ce-paragraph :is(h1,h2,h3,h4){letter-spacing:normal;line-height:1.45;margin:1.4em 0 .6em;font-weight:650}
+#block-content .ce-paragraph h1{font-size:1.6em}
+#block-content .ce-paragraph h2{font-size:1.35em}
+#block-content .ce-paragraph h3{font-size:1.15em}
 .note-prose blockquote{background:#f2f7fb;border-color:#91c3dc;color:#6f8594}
 .note-prose table{font-size:14px}.note-prose td,.note-prose th{border-color:#d7e1eb}.note-prose th{background:#f2f5f8}
 .note-prose code,.note-prose pre{background:#f2f5f8;color:#63798a}
@@ -449,3 +453,11 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 .note-image-status{display:inline-block;padding:10px;background:#f4f7fa;border:1px solid #c8d5e2;font-size:12px;white-space:normal}
 [data-note-image]{display:inline-block;position:relative;max-width:100%;vertical-align:middle}
 .note-image-remove{position:absolute;right:4px;top:4px;min-width:30px;min-height:30px;padding:0;background:white;border:1px solid #c8d5e2;border-radius:3px;color:#505a64;font-size:22px;cursor:pointer}
+#note-html-dialog{width:min(1000px,calc(100vw - 32px))}
+#note-html-dialog h2{font-size:20px;font-weight:600}
+.html-source-options{display:flex;gap:8px;margin:16px 0}
+.html-source-options button{min-height:32px;border-radius:3px;padding:5px 12px}
+.html-source-options button[aria-pressed=true]{background:#dff0f8;border-color:#86bbd3;color:#176b94}
+#note-html-code{display:block;width:100%;height:min(48dvh,440px);min-height:140px;resize:vertical;border:1px solid #c8d5e2;border-radius:3px;padding:10px;background:#fafcfd;color:#505a64;font:12px/1.6 Consolas,monospace;white-space:pre;box-sizing:border-box}
+#note-html-code:focus-visible{outline:2px solid #3799be;outline-offset:2px}
+#note-html-status{min-height:1.5em;color:#637585}
