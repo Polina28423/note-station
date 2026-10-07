@@ -69,6 +69,8 @@ module.exports=async function checkAppEditor(page,base){
   check(await page.evaluate(()=>localStorage.getItem('note-station.editor.v1'))==='classic','cancelled change does not overwrite the stored preference');
   await settings('blocks');await page.locator('#discard-edit').click();await page.locator('#block-content .ce-paragraph').first().waitFor();
   check(await page.locator('#edit-title').inputValue()==='Application auto-edit fixture','discarding a draft before switching restores the saved title');
+  // The surface appears before the asynchronous switch persists its preference.
+  await page.waitForFunction(()=>localStorage.getItem('note-station.editor.v1')==='blocks');
   check(await page.evaluate(()=>localStorage.getItem('note-station.editor.v1'))==='blocks','accepted editor change persists the new preference');
   await page.locator('#edit-title').fill('Save before mode change');await settings('classic');await page.locator('#save-and-continue').click();
   await page.locator('#classic-surface iframe').waitFor();

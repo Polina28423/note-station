@@ -5,6 +5,23 @@ import { normalizeColor, safeStyles, normalizeFontFamily, normalizeFontSize } fr
 const load = html => { const doc=new EditorDocument(html);doc.bindBaseline(doc.blocks);return doc; };
 const clone = value => structuredClone(value);
 
+test('nested headings and styled bold labels import as editable text without protected cards',()=>{
+  for(const label of ['<h3>Протокол взаимодействия:</h3>','<strong style="font-weight:700;font-size:12pt">Протокол взаимодействия:</strong>','<span style="font-weight:bold;font-style:italic;text-decoration:underline">Протокол взаимодействия:</span>']){
+    const html=`<div>${label}</div><div><a href="https://example.org/protocol">Документ</a></div>`;
+    const doc=load(html);assert.equal(doc.fragments.size,0);assert.equal(doc.serialize(doc.blocks),html);
+    const blocks=clone(doc.blocks);blocks[0].data.text=blocks[0].data.text.replace('Протокол','Обновлённый протокол');
+    const output=doc.serialize(blocks);assert.ok(output.includes('Обновлённый протокол'));assert.ok(output.endsWith('<div><a href="https://example.org/protocol">Документ</a></div>'));assert.equal(load(output).fragments.size,0);
+    if(label.startsWith('<h3>'))assert.match(output,/<div><h3>Обновлённый протокол взаимодействия:<\/h3><\/div>/);
+    else assert.match(output,/font-weight:(?:700|bold)/);
+  }
+});
+
+test('presentation styles use finite values and reject resource loading and injected CSS',()=>{
+  assert.deepEqual(safeStyles('font-weight:700;font-style:italic;text-decoration:underline line-through',true),{'font-weight':'700','font-style':'italic','text-decoration':'underline line-through'});
+  for(const style of ['font-weight:url(https://example.org)','font-style:expression(bad())','text-decoration:underline url(x)','text-decoration:none underline','font-weight:bold!important','text-decoration:underline underline'])assert.throws(()=>safeStyles(style,true));
+  const html=cleanInline('<div><h3 onclick="bad()" style="font-weight:bold">Safe</h3><script>bad()</script></div>');assert.equal(html,'<div><h3 style="font-weight:bold">Safe</h3></div>');
+});
+
 test('nested text containers retain line structure and links as editable content',()=>{
   const html='<div>Описание элементов<div><a href="https://composeunstyled.com">https://composeunstyled.com</a></div></div><div>Примеры</div><div><a href="https://github.com/android/compose-samples">Примеры Compose</a><div><a href="https://www.sinasamaki.com/pager-animations/">Анимации</a></div><div>Очень интересный сайт<div><a href="https://kotlinandroid.org/kotlin-android/">Kotlin Android</a></div></div></div>';
   const doc=load(html);assert.equal(doc.fragments.size,0);assert.equal(doc.blocks.length,3);assert.ok(doc.blocks.every(block=>block.type==='paragraph'));

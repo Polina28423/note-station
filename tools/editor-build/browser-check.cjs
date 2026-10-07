@@ -51,6 +51,8 @@ async function main(){
     await require(path.join(root,'tests/note-tags-check.cjs'))(page,`http://127.0.0.1:${port}`);
     await require(path.join(root,'tests/inline-flow-check.cjs'))(page,`http://127.0.0.1:${port}`);
     await require(path.join(root,'tests/images-check.cjs'))(page,`http://127.0.0.1:${port}`);
+    await require(path.join(root,'tests/note-html-check.cjs'))(page,`http://127.0.0.1:${port}`);
+    await require(path.join(root,'tests/heading-import-check.cjs'))(page,`http://127.0.0.1:${port}`);
     if(errors.length){console.error(errors);process.exitCode=1;}
   } finally {await browser?.close();server.kill();}
 }
