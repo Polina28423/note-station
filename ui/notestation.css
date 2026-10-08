@@ -87,6 +87,8 @@ body.connected #status.error{background:#fff0eb;color:#a14335}
 .reader-actions button{color:#7b8b9a;border-radius:3px;border-color:#d7e1eb;padding:4px 8px;background:transparent}
 .reader-actions .icon-button{border-color:transparent}
 .reader-actions .icon-button[aria-pressed=true]{background:#def2fa}
+.reader-actions .html-source-button{display:inline-flex;align-items:center;gap:5px;min-height:30px;background:#fff;border-color:#c8d5e2;color:#505a64;white-space:nowrap}
+.reader-actions .html-source-button .editor-icon{display:block;width:18px;height:18px;flex-shrink:0;pointer-events:none}
 .reader-document{padding:24px 28px 50px;scrollbar-color:#c6d0da transparent}
 .reader-document>.eyebrow{display:none}
 .reader-document>h1{font-size:24px;font-weight:600;letter-spacing:0;line-height:1.4;margin:0 0 10px;color:#505a64}
