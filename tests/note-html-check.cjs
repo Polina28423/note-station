@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict');
 module.exports=async(page,base)=>{
   for(const mode of ['blocks','classic']){
+    await page.setViewportSize({width:900,height:800});
     await page.goto(base+'/');await page.locator('.account-open').first().click();
     assert.equal(await page.locator('#note-html-open').isDisabled(),true);
     const source=await page.evaluate(()=>{
@@ -15,6 +16,10 @@ module.exports=async(page,base)=>{
       return content;
     });
     await page.locator('#notes .note-row').first().click();await page.locator('#note-content p').waitFor();
+    assert.equal(await page.locator('#note-html-open span').textContent(),'HTML');
+    const button=await page.locator('#note-html-open').boundingBox(),icon=await page.locator('#note-html-open svg').boundingBox();
+    assert.ok(button.x>=0&&button.x+button.width<=900&&button.height>=30);assert.equal(icon.width,18);assert.equal(icon.height,18);
+    assert.equal(await page.locator('#note-html-open').isEnabled(),true);
     await page.locator('#note-html-open').click();await page.locator('#note-html-dialog').waitFor({state:'visible'});
     assert.equal(await page.locator('#note-html-code').inputValue(),source);assert.equal(await page.locator('#note-html-code').getAttribute('readonly'),'');
     assert.equal(await page.locator('#note-html-draft').isDisabled(),true);
