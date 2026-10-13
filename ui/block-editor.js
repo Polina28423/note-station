@@ -1,12 +1,12 @@
 import { ImageSession } from './images.js';
 import { bindExternalLinks, updateLink } from './links.js';
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
-import { EditorDocument, documentSignature, cleanInline, TEXT_FLOW_TAGS } from './editor-document.js';
+import { EditorDocument, documentSignature, cleanInline, TEXT_FLOW_TAGS, isLegacyTextId } from './editor-document.js';
 import { safeNoteFragment } from './content.js';
 import { focusContent, editableTarget } from './editor-focus.js';
 import { ALIGNMENTS, normalizeColor, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 
-const INLINE_RULES={b:{style:true},strong:{style:true},i:{style:true},em:{style:true},u:{style:true},s:{style:true},strike:{style:true},del:{style:true},a:{href:true,title:true},br:true,code:{style:true},mark:{style:true},span:{style:true,'data-note-image':true,contenteditable:true},font:{color:true}};
+const INLINE_RULES={b:{style:true,id:isLegacyTextId},strong:{style:true,id:isLegacyTextId},i:{style:true,id:isLegacyTextId},em:{style:true,id:isLegacyTextId},u:{style:true,id:isLegacyTextId},s:{style:true,id:isLegacyTextId},strike:{style:true,id:isLegacyTextId},del:{style:true,id:isLegacyTextId},a:{href:true,title:true,id:isLegacyTextId},br:true,code:{style:true,id:isLegacyTextId},mark:{style:true,id:isLegacyTextId},span:{style:true,id:isLegacyTextId,'data-note-image':true,contenteditable:true},font:{color:true,id:isLegacyTextId}};
 const TEXT_FLOW_RULES={...INLINE_RULES,...Object.fromEntries(TEXT_FLOW_TAGS.map(tag=>[tag,{style:true,'data-empty':true}]))};
 const $=id=>document.getElementById(id);
 export class BlockSurface {

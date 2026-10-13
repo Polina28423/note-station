@@ -3,6 +3,7 @@ import { ALIGNMENTS, normalizeColor, safeStyles, styleText } from './editor-styl
 
 const INLINE = new Set(['b','strong','i','em','u','s','strike','del','a','br','code','mark','span','font']);
 export const TEXT_FLOW_TAGS=['div','p','h1','h2','h3','h4','h5','h6'];
+export const isLegacyTextId=value=>typeof value==='string'&&/^ext-gen\d{1,16}$/.test(value);
 const text = node => node.nodeName === '#text' ? node.value : (node.childNodes || []).map(text).join('');
 const esc = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const attrs = node => Object.fromEntries((node.attrs || []).map(a => [a.name,a.value]));
@@ -38,8 +39,9 @@ function inlineNodes(nodes, strict, depth = 0, allowFlow = false) {
     const a = attrs(node);
     if(node.tagName==='span' && /^[a-f0-9-]{36}$/.test(a['data-note-image'] || ''))return `<span data-note-image="${a['data-note-image']}" contenteditable="false">[Изображение]</span>`;
     const allowed=node.tagName==='a'?['href','title','target','rel','style']:node.tagName==='font'?['color']:node.tagName==='br'?[]:['style'];
-    if (strict && Object.keys(a).some(k => !allowed.includes(k))) throw Error('Особое оформление текста.');
-    if (node.tagName === 'br') return '<br>';
+    if (strict && Object.keys(a).some(k => !allowed.includes(k)&&!(k==='id'&&isLegacyTextId(a.id)))) throw Error('Особое оформление текста.');
+    const identity=isLegacyTextId(a.id)?` id="${a.id}"`:'';
+    if (node.tagName === 'br') return `<br${identity}>`;
     const body = inlineNodes(node.childNodes || [], strict, depth + 1, allowFlow);
     if(['span','font','mark'].includes(node.tagName)){
       const styles=safeStyles(a.style,strict);
@@ -48,7 +50,7 @@ function inlineNodes(nodes, strict, depth = 0, allowFlow = false) {
         const color=normalizeColor(a.color);if(!color&&strict)throw Error('Особый цвет текста.');if(color)styles.color=color;
       }
       const tag=node.tagName==='mark'?'mark':'span',style=styleText(styles);
-      return style?`<${tag} style="${style}">${body}</${tag}>`:tag==='mark'?`<mark>${body}</mark>`:body;
+      return style||identity||tag==='mark'?`<${tag}${identity}${style?` style="${style}"`:''}>${body}</${tag}>`:body;
     }
     if (node.tagName === 'a') {
       const href = safeLink(a.href);
@@ -56,12 +58,12 @@ function inlineNodes(nodes, strict, depth = 0, allowFlow = false) {
       const styles=safeStyles(a.style,strict);
       if(styles['text-align']){if(strict)throw Error('Особое выравнивание ссылки.');delete styles['text-align'];}
       const style=styleText(styles),formatted=style?`<span style="${style}">${body}</span>`:body;
-      return href ? `<a href="${esc(href)}"${a.title ? ` title="${esc(a.title)}"` : ''}>${formatted}</a>` : formatted;
+      return href ? `<a${identity} href="${esc(href)}"${a.title ? ` title="${esc(a.title)}"` : ''}>${formatted}</a>` : formatted;
     }
     const styles=safeStyles(a.style,strict);
     if(styles['text-align']){if(strict)throw Error('Выравнивание встроенного элемента.');delete styles['text-align'];}
     const style=styleText(styles);
-    return `<${node.tagName}${style?` style="${style}"`:''}>${body}</${node.tagName}>`;
+    return `<${node.tagName}${identity}${style?` style="${style}"`:''}>${body}</${node.tagName}>`;
   }).join('');
 }
 export function cleanInline(html) {
@@ -70,6 +72,17 @@ export function cleanInline(html) {
 }
 function onlyAttrs(node, allowed = []) {
   if ((node.attrs || []).some(a => !allowed.includes(a.name))) throw Error('Особые атрибуты элемента.');
+}
+function invisibleDiv(node,depth=0){
+  if(depth>30||node.tagName!=='div'||node.attrs?.length)return false;
+  const empty=(child,level)=>{
+    if(level>30)return false;
+    if(child.nodeName==='#comment')return true;
+    if(child.nodeName==='#text')return /^[\t\r\n ]*$/.test(child.value);
+    if(child.tagName==='div')return invisibleDiv(child,level);
+    return INLINE.has(child.tagName)&&!['br','code','mark'].includes(child.tagName)&&!child.attrs?.length&&(child.childNodes || []).every(item=>empty(item,level+1));
+  };
+  return (node.childNodes || []).every(child=>empty(child,depth+1));
 }
 function readList(node, rootTag = node.tagName, depth = 0) {
   if (depth > 12 || node.tagName !== rootTag) throw Error('Сложный вложенный список.');
@@ -219,7 +232,8 @@ export class EditorDocument {
     cursor=0;
     for(let index=0;index<ranges.length;index++) {
       const {node,start}=ranges[index];let end=ranges[index].end;
-      if(node.nodeName==='#comment'||(node.nodeName==='#text'&&!node.value.trim()))continue;
+      // Zero-height legacy wrappers stay in the raw prefix, not editable blank blocks.
+      if(node.nodeName==='#comment'||(node.nodeName==='#text'&&!node.value.trim())||invisibleDiv(node))continue;
       const inline=node.nodeName==='#text'||INLINE.has(node.tagName);
       const flow=[node];
       if(inline){
