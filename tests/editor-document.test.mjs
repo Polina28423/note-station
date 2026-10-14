@@ -1,9 +1,29 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { EditorDocument, cleanInline, renderBlock } from '../ui/editor-document.js';
 import { normalizeColor, safeStyles, normalizeFontFamily, normalizeFontSize } from '../ui/editor-styles.js';
 const load = html => { const doc=new EditorDocument(html);doc.bindBaseline(doc.blocks);return doc; };
 const clone = value => structuredClone(value);
+
+test('legacy generated inline IDs are editable and retained without adding invisible div blocks',()=>{
+  const html=readFileSync(new URL('./fixtures/legacy-generated-note.html',import.meta.url),'utf8');
+  const doc=load(html);assert.equal(doc.fragments.size,0);assert.equal(doc.blocks.length,9);assert.equal(doc.serialize(doc.blocks),html);
+  const blocks=clone(doc.blocks),label=blocks.find(block=>block.data.text.includes('ext-gen514'));
+  label.data.text=label.data.text.replace('Протокол взаимодействия','Обновлённый протокол взаимодействия');
+  const output=doc.serialize(blocks);assert.ok(output.includes('<b id="ext-gen514">Обновлённый протокол взаимодействия'));assert.equal((output.match(/href=/g)||[]).length,5);assert.equal((output.match(/<div><b><\/b><\/div>/g)||[]).length,6);
+  assert.equal(load(output).fragments.size,0);
+});
+
+test('only generated legacy IDs are accepted and visible blank lines remain editable',()=>{
+  for(const id of ['save-note','ext-gen','ext-genbad','ext-gen514-extra'])assert.equal(load(`<div><b id="${id}">Label</b></div>`).blocks[0].type,'preserved');
+  assert.equal(cleanInline('<b id="save-note">Label</b>'),'<b>Label</b>');
+  const html='<div></div><div><b></b></div><div><br></div><div>&nbsp;</div><div><code></code></div><div><b>Text</b></div>';
+  const doc=load(html);assert.equal(doc.blocks.length,4);assert.equal(doc.serialize(doc.blocks),html);
+  assert.equal(load('<div></div><div><b></b></div>').blocks.length,0);
+  const deep='<div>'+'<b>'.repeat(100)+'</b>'.repeat(100)+'</div>';
+  const guarded=load(deep);assert.equal(guarded.blocks[0].type,'preserved');assert.equal(guarded.serialize(guarded.blocks),deep);
+});
 
 test('nested headings and styled bold labels import as editable text without protected cards',()=>{
   for(const label of ['<h3>Протокол взаимодействия:</h3>','<strong style="font-weight:700;font-size:12pt">Протокол взаимодействия:</strong>','<span style="font-weight:bold;font-style:italic;text-decoration:underline">Протокол взаимодействия:</span>']){

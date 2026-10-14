@@ -6,6 +6,8 @@ const fs=require('node:fs');
 const root=path.resolve(__dirname,'../..');
 async function main(){
   const server=spawn('python',['tests/serve-preview.py','--port','0'],{cwd:root,windowsHide:true,stdio:['ignore','pipe','pipe']});
+  // Drain request logs so a full stderr pipe cannot stall long browser runs.
+  server.stderr.resume();
   let browser;
   try {
     const port=await new Promise((resolve,reject)=>{
@@ -53,6 +55,7 @@ async function main(){
     await require(path.join(root,'tests/images-check.cjs'))(page,`http://127.0.0.1:${port}`);
     await require(path.join(root,'tests/note-html-check.cjs'))(page,`http://127.0.0.1:${port}`);
     await require(path.join(root,'tests/heading-import-check.cjs'))(page,`http://127.0.0.1:${port}`);
+    await require(path.join(root,'tests/generated-id-check.cjs'))(page,`http://127.0.0.1:${port}`);
     if(errors.length){console.error(errors);process.exitCode=1;}
   } finally {await browser?.close();server.kill();}
 }
