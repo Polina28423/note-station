@@ -6,6 +6,24 @@ import { normalizeColor, safeStyles, normalizeFontFamily, normalizeFontSize } fr
 const load = html => { const doc=new EditorDocument(html);doc.bindBaseline(doc.blocks);return doc; };
 const clone = value => structuredClone(value);
 
+test('clipboard metadata and legacy font-size classes preserve editable nested text',()=>{
+  const html=readFileSync(new URL('./fixtures/legacy-clipboard-note.html',import.meta.url),'utf8'),doc=load(html);
+  assert.equal(doc.fragments.size,0);assert.equal(doc.blocks.length,11);assert.equal(doc.serialize(doc.blocks),html);
+  const blocks=clone(doc.blocks);blocks[0].data.text=blocks[0].data.text.replace('Сервис один','Первый сервис');
+  const changed=doc.serialize(blocks);assert.ok(changed.includes('<span class="syno-fontsize-x-small"><b id="ext-gen607">Первый сервис</b></span>'));
+  assert.ok(changed.includes('font-size:12pt'));assert.ok(!changed.includes('data-pm-slice'));assert.ok(!changed.includes('data-en-clipboard'));
+  assert.deepEqual(changed.match(/href="[^"]+"/g),html.match(/href="[^"]+"/g));assert.equal(load(changed).fragments.size,0);
+  assert.equal(load('<div data-pm-slice="0 0 []" data-en-clipboard="true">Text</div>').blocks[0].type,'paragraph');
+});
+
+test('clipboard allowances reject unrelated classes, malformed metadata and events',()=>{
+  for(const markup of ['<span class="custom">Text</span>','<span class="syno-fontsize-x-small custom">Text</span>','<span class="syno-fontsize-unknown">Text</span>','<div data-pm-slice="bad">Text</div>','<div data-en-clipboard="bad">Text</div>','<div data-pm-slice="0 0 []" onclick="bad()">Text</div>'])assert.equal(load(markup).blocks[0].type,'preserved');
+  assert.equal(cleanInline('<span class="custom" onclick="bad()">Text</span>'),'Text');
+  assert.equal(cleanInline('<span class="syno-fontsize-x-small">Text</span>'),'<span class="syno-fontsize-x-small">Text</span>');
+  const html='<div><a href="https://example.org/empty"></a></div><div><br></div><div>&nbsp;</div>';
+  const doc=load(html);assert.equal(doc.blocks.length,2);assert.equal(doc.serialize(doc.blocks),html);
+});
+
 test('legacy generated inline IDs are editable and retained without adding invisible div blocks',()=>{
   const html=readFileSync(new URL('./fixtures/legacy-generated-note.html',import.meta.url),'utf8');
   const doc=load(html);assert.equal(doc.fragments.size,0);assert.equal(doc.blocks.length,9);assert.equal(doc.serialize(doc.blocks),html);
