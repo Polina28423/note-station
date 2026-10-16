@@ -1,13 +1,14 @@
 import { ImageSession } from './images.js';
 import { bindExternalLinks, updateLink } from './links.js';
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
-import { EditorDocument, documentSignature, cleanInline, TEXT_FLOW_TAGS, isLegacyTextId } from './editor-document.js';
+import { EditorDocument, documentSignature, cleanInline, TEXT_FLOW_TAGS, isLegacyTextId, isLegacyFontClass } from './editor-document.js';
 import { safeNoteFragment } from './content.js';
 import { focusContent, editableTarget } from './editor-focus.js';
 import { ALIGNMENTS, normalizeColor, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 
-const INLINE_RULES={b:{style:true,id:isLegacyTextId},strong:{style:true,id:isLegacyTextId},i:{style:true,id:isLegacyTextId},em:{style:true,id:isLegacyTextId},u:{style:true,id:isLegacyTextId},s:{style:true,id:isLegacyTextId},strike:{style:true,id:isLegacyTextId},del:{style:true,id:isLegacyTextId},a:{href:true,title:true,id:isLegacyTextId},br:true,code:{style:true,id:isLegacyTextId},mark:{style:true,id:isLegacyTextId},span:{style:true,id:isLegacyTextId,'data-note-image':true,contenteditable:true},font:{color:true,id:isLegacyTextId}};
-const TEXT_FLOW_RULES={...INLINE_RULES,...Object.fromEntries(TEXT_FLOW_TAGS.map(tag=>[tag,{style:true,'data-empty':true}]))};
+const TEXT_STYLE_RULES={style:true,id:isLegacyTextId,class:isLegacyFontClass};
+const INLINE_RULES={b:{...TEXT_STYLE_RULES},strong:{...TEXT_STYLE_RULES},i:{...TEXT_STYLE_RULES},em:{...TEXT_STYLE_RULES},u:{...TEXT_STYLE_RULES},s:{...TEXT_STYLE_RULES},strike:{...TEXT_STYLE_RULES},del:{...TEXT_STYLE_RULES},a:{...TEXT_STYLE_RULES,href:true,title:true},br:true,code:{...TEXT_STYLE_RULES},mark:{...TEXT_STYLE_RULES},span:{...TEXT_STYLE_RULES,'data-note-image':true,contenteditable:true},font:{color:true,id:isLegacyTextId,class:isLegacyFontClass}};
+const TEXT_FLOW_RULES={...INLINE_RULES,...Object.fromEntries(TEXT_FLOW_TAGS.map(tag=>[tag,{...TEXT_STYLE_RULES,'data-empty':true}]))};
 const $=id=>document.getElementById(id);
 export class BlockSurface {
   constructor(onChange,onOpenLink=()=>{},onLinkError=()=>{}) {this.openExternal=onOpenLink;this.linkError=onLinkError;this.notify=onChange;this.ready=false;this.history=[];this.historyIndex=-1;this.queue=Promise.resolve();}

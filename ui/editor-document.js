@@ -4,6 +4,20 @@ import { ALIGNMENTS, normalizeColor, safeStyles, styleText } from './editor-styl
 const INLINE = new Set(['b','strong','i','em','u','s','strike','del','a','br','code','mark','span','font']);
 export const TEXT_FLOW_TAGS=['div','p','h1','h2','h3','h4','h5','h6'];
 export const isLegacyTextId=value=>typeof value==='string'&&/^ext-gen\d{1,16}$/.test(value);
+export const isLegacyFontClass=value=>typeof value==='string'&&/^syno-fontsize-(?:xx-small|x-small|small|medium|large|x-large|xx-large)$/.test(value);
+function isClipboardMetadata(name,value){
+  if(name==='data-en-clipboard')return value==='true'||value==='false';
+  if(name!=='data-pm-slice'||typeof value!=='string'||value.length>4096)return false;
+  const match=value.match(/^\d{1,3} \d{1,3} (\[.*\])$/);
+  if(!match)return false;
+  try{return Array.isArray(JSON.parse(match[1]));}catch{return false;}
+}
+function textAttrs(node,allowed,strict){
+  const values=attrs(node);
+  if(strict&&Object.entries(values).some(([name,value])=>!allowed.includes(name)&&!(name==='id'&&isLegacyTextId(value))&&!(name==='class'&&isLegacyFontClass(value))&&!isClipboardMetadata(name,value)))throw Error('Особое оформление текста.');
+  return values;
+}
+function textIdentity(values){return (isLegacyTextId(values.id)?` id="${values.id}"`:'')+(isLegacyFontClass(values.class)?` class="${values.class}"`:'');}
 const text = node => node.nodeName === '#text' ? node.value : (node.childNodes || []).map(text).join('');
 const esc = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const attrs = node => Object.fromEntries((node.attrs || []).map(a => [a.name,a.value]));
@@ -27,9 +41,8 @@ function inlineNodes(nodes, strict, depth = 0, allowFlow = false) {
   return nodes.map(node => {
     if (node.nodeName === '#text') return esc(node.value);
     if(allowFlow && TEXT_FLOW_TAGS.includes(node.tagName)){
-      if(strict)onlyAttrs(node,['style']);
-      const style=styleText(safeStyles(attrs(node).style,strict));
-      return `<${node.tagName}${style?` style="${style}"`:''}>${inlineNodes(node.childNodes || [],strict,depth+1,true)}</${node.tagName}>`;
+      const a=textAttrs(node,['style'],strict),style=styleText(safeStyles(a.style,strict));
+      return `<${node.tagName}${textIdentity(a)}${style?` style="${style}"`:''}>${inlineNodes(node.childNodes || [],strict,depth+1,true)}</${node.tagName}>`;
     }
     if (!INLINE.has(node.tagName)) {
       if (strict) throw Error('Неподдерживаемый встроенный элемент.');
@@ -39,8 +52,8 @@ function inlineNodes(nodes, strict, depth = 0, allowFlow = false) {
     const a = attrs(node);
     if(node.tagName==='span' && /^[a-f0-9-]{36}$/.test(a['data-note-image'] || ''))return `<span data-note-image="${a['data-note-image']}" contenteditable="false">[Изображение]</span>`;
     const allowed=node.tagName==='a'?['href','title','target','rel','style']:node.tagName==='font'?['color']:node.tagName==='br'?[]:['style'];
-    if (strict && Object.keys(a).some(k => !allowed.includes(k)&&!(k==='id'&&isLegacyTextId(a.id)))) throw Error('Особое оформление текста.');
-    const identity=isLegacyTextId(a.id)?` id="${a.id}"`:'';
+    textAttrs(node,allowed,strict);
+    const identity=textIdentity(a);
     if (node.tagName === 'br') return `<br${identity}>`;
     const body = inlineNodes(node.childNodes || [], strict, depth + 1, allowFlow);
     if(['span','font','mark'].includes(node.tagName)){
@@ -71,7 +84,7 @@ export function cleanInline(html) {
   return inlineNodes(parseFragment(html).childNodes, false, 0, true);
 }
 function onlyAttrs(node, allowed = []) {
-  if ((node.attrs || []).some(a => !allowed.includes(a.name))) throw Error('Особые атрибуты элемента.');
+  if ((node.attrs || []).some(a => !allowed.includes(a.name)&&!isClipboardMetadata(a.name,a.value))) throw Error('Особые атрибуты элемента.');
 }
 function invisibleDiv(node,depth=0){
   if(depth>30||node.tagName!=='div'||node.attrs?.length)return false;
@@ -80,6 +93,7 @@ function invisibleDiv(node,depth=0){
     if(child.nodeName==='#comment')return true;
     if(child.nodeName==='#text')return /^[\t\r\n ]*$/.test(child.value);
     if(child.tagName==='div')return invisibleDiv(child,level);
+    if(child.tagName==='a'&&safeLink(attrs(child).href)&&(child.attrs || []).every(attr=>['href','title','target','rel'].includes(attr.name)))return (child.childNodes || []).every(item=>empty(item,level+1));
     return INLINE.has(child.tagName)&&!['br','code','mark'].includes(child.tagName)&&!child.attrs?.length&&(child.childNodes || []).every(item=>empty(item,level+1));
   };
   return (node.childNodes || []).every(child=>empty(child,depth+1));
