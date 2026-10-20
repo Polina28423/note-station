@@ -1,4 +1,5 @@
 import { ImageSession } from './images.js';
+import { normalizePastedHtml } from './paste-normalizer.js';
 import { bindExternalLinks, updateLink } from './links.js';
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
 import { EditorDocument, documentSignature, cleanInline, TEXT_FLOW_TAGS, isLegacyTextId, isLegacyFontClass } from './editor-document.js';
@@ -7,7 +8,7 @@ import { focusContent, editableTarget } from './editor-focus.js';
 import { ALIGNMENTS, normalizeColor, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 
 const TEXT_STYLE_RULES={style:true,id:isLegacyTextId,class:isLegacyFontClass};
-const INLINE_RULES={b:{...TEXT_STYLE_RULES},strong:{...TEXT_STYLE_RULES},i:{...TEXT_STYLE_RULES},em:{...TEXT_STYLE_RULES},u:{...TEXT_STYLE_RULES},s:{...TEXT_STYLE_RULES},strike:{...TEXT_STYLE_RULES},del:{...TEXT_STYLE_RULES},a:{...TEXT_STYLE_RULES,href:true,title:true},br:true,code:{...TEXT_STYLE_RULES},mark:{...TEXT_STYLE_RULES},span:{...TEXT_STYLE_RULES,'data-note-image':true,contenteditable:true},font:{color:true,id:isLegacyTextId,class:isLegacyFontClass}};
+const INLINE_RULES={b:{...TEXT_STYLE_RULES},strong:{...TEXT_STYLE_RULES},i:{...TEXT_STYLE_RULES},em:{...TEXT_STYLE_RULES},u:{...TEXT_STYLE_RULES},s:{...TEXT_STYLE_RULES},strike:{...TEXT_STYLE_RULES},del:{...TEXT_STYLE_RULES},sub:{...TEXT_STYLE_RULES},sup:{...TEXT_STYLE_RULES},a:{...TEXT_STYLE_RULES,href:true,title:true},br:true,code:{...TEXT_STYLE_RULES},mark:{...TEXT_STYLE_RULES},span:{...TEXT_STYLE_RULES,'data-note-image':true,contenteditable:true},font:{color:true,id:isLegacyTextId,class:isLegacyFontClass}};
 const TEXT_FLOW_RULES={...INLINE_RULES,...Object.fromEntries(TEXT_FLOW_TAGS.map(tag=>[tag,{...TEXT_STYLE_RULES,'data-empty':true}]))};
 const $=id=>document.getElementById(id);
 export class BlockSurface {
@@ -113,12 +114,17 @@ export class BlockSurface {
       }
       const html=event.clipboardData?.getData('text/html');
       if(!html)return;
+      if(event.target.matches?.('textarea,input'))return;
       try {
-        if(html.length>2*1024*1024)throw Error('Слишком большой вставляемый HTML.');
-        const cleaned=window.DOMPurify.sanitize(html,{USE_PROFILES:{html:true},FORBID_TAGS:['script','style','iframe','object','embed','form'],FORBID_ATTR:['srcdoc']});
-        const incoming=new EditorDocument(this.images.encode(cleaned));
-        if(!/<img\b/i.test(cleaned)&&!incoming.fragments.size&&!incoming.blocks.some(block=>block.tunes))return; // Native paste handles ordinary inline text.
+        const normalized=normalizePastedHtml(this.images.clipboardHtml(html),{baseFontSize:Number.parseFloat(getComputedStyle(holder).fontSize)});
+        const cleaned=window.DOMPurify.sanitize(normalized,{USE_PROFILES:{html:true},FORBID_TAGS:['script','style','iframe','object','embed','form'],ADD_ATTR:['ref','file_id']});
         event.preventDefault();event.stopImmediatePropagation();
+        if(!cleaned)return;
+        const incoming=new EditorDocument(this.images.encode(cleaned));
+        const inline=incoming.blocks.length===1&&incoming.blocks[0].type==='paragraph'&&!incoming.blocks[0].tunes&&!incoming.fragments.size&&!/<(?:img|div|p|h[1-6])\b/i.test(incoming.blocks[0].data.text);
+        if(inline&&this.selectionRange()){
+          document.execCommand('insertHTML',false,incoming.blocks[0].data.text);this.notify();this.scheduleHistory();return;
+        }
         this.pasteQueue=(this.pasteQueue || Promise.resolve()).then(()=>this.pasteDocument(incoming)).catch(error=>this.notify(error));
       } catch(error){event.preventDefault();event.stopImmediatePropagation();this.notify(error);}
     };

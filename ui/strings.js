@@ -70,6 +70,8 @@ export const pasteStrings = Object.freeze({
   label: 'Вставлять без форматирования',
   plain: 'Вставка без форматирования включена',
   formatted: 'Вставка с форматированием включена',
+  htmlTooLarge:'Слишком большой вставляемый HTML: не более 2 МБ.',
+  htmlTooComplex:'Слишком сложный вставляемый HTML.',
 });
 export const imageStrings=Object.freeze({
   image:'Изображение',add:'Добавить изображение',loading:'Загрузка изображения…',

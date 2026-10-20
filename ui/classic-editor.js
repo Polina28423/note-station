@@ -1,4 +1,5 @@
 import { ImageSession } from './images.js';
+import { normalizePastedHtml } from './paste-normalizer.js';
 import { bindExternalLinks, updateLink } from './links.js';
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
 import { focusContent } from './editor-focus.js';
@@ -26,14 +27,36 @@ export class ClassicSurface {
         editor.ui.registry.addButton('noteLink',{icon:'link',tooltip:'Ссылка',onAction:()=>this.editLink()});
         editor.on('input change Undo Redo', () => {this.images?.paint(editor.getBody());this.update();});
         editor.on('PreProcess',event=>{for(const element of event.node.querySelectorAll('[data-note-image]'))element.textContent='[Изображение]';});
-        editor.on('PastePreProcess',event=>{if(this.images)event.content=this.images.encode(this.clean(event.content));});
+        editor.on('PastePreProcess',event=>{
+          if(this.pastePlain)return;
+          try{
+            const html=normalizePastedHtml(this.images?this.images.clipboardHtml(event.content):event.content,{baseFontSize:Number.parseFloat(editor.getWin().getComputedStyle(editor.getBody()).fontSize)});
+            if(!html){event.preventDefault?.();event.content='';return;}
+            event.content=this.clean(this.images?this.images.encode(html):html);
+          }catch(error){event.preventDefault?.();event.content='';this.linkError(String(error),true);}
+        });
         editor.on('NodeChange SelectionChange focus blur keyup mouseup',()=>this.selectionChanged?.());
         editor.addShortcut('meta+s', 'Сохранить заметку', () => this.save());
       },
     });
     this.editor = editors[0];
     this.editor.getBody().addEventListener('paste',event=>{
-      if(!this.pastePlain||!event.clipboardData)return;
+      if(!event.clipboardData||event.clipboardData.files.length)return;
+      if(!this.pastePlain){
+        const html=event.clipboardData.getData('text/html');if(!html)return;
+        // Read the original clipboard before TinyMCE discards relative font sizes.
+        event.preventDefault();event.stopImmediatePropagation();
+        try{
+          const normalized=normalizePastedHtml(this.images?this.images.clipboardHtml(html):html,{baseFontSize:Number.parseFloat(this.editor.getWin().getComputedStyle(this.editor.getBody()).fontSize)});
+          if(!normalized)return;
+          const content=this.clean(this.images?this.images.encode(normalized):normalized);
+          const range=this.selectionRange(),node=range&&(range.startContainer.nodeType===1?range.startContainer:range.startContainer.parentElement);
+          const media=node?.closest('[data-note-image],.mceNonEditable');
+          if(media){range.setStartAfter(media);range.collapse(true);this.editor.selection.setRng(range);}
+          this.editor.undoManager.add();this.editor.undoManager.transact(()=>this.editor.insertContent(content));this.images?.paint(this.editor.getBody());this.update();
+        }catch(error){this.linkError(String(error),true);}
+        return;
+      }
       event.preventDefault();event.stopImmediatePropagation();
       const text=event.clipboardData.getData('text/plain');
       if(!text)return;

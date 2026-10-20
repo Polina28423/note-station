@@ -1,7 +1,7 @@
 import { parseFragment } from './vendor/editorjs/html-parser.js';
 import { ALIGNMENTS, normalizeColor, safeStyles, styleText } from './editor-styles.js';
 
-const INLINE = new Set(['b','strong','i','em','u','s','strike','del','a','br','code','mark','span','font']);
+const INLINE = new Set(['b','strong','i','em','u','s','strike','del','a','br','code','mark','span','font','sub','sup']);
 export const TEXT_FLOW_TAGS=['div','p','h1','h2','h3','h4','h5','h6'];
 export const isLegacyTextId=value=>typeof value==='string'&&/^ext-gen\d{1,16}$/.test(value);
 export const isLegacyFontClass=value=>typeof value==='string'&&/^syno-fontsize-(?:xx-small|x-small|small|medium|large|x-large|xx-large)$/.test(value);

@@ -80,6 +80,10 @@ export function imagePreview(raw,note,load,local,background=false) {
 export class ImageSession {
   constructor(note,load){this.note=note;this.load=imageResources(note,load).load;this.records=new Map();this.local=new Map();this.pending=Promise.resolve();}
   token(key){return `<span data-note-image="${key}" contenteditable="false">[${strings.image}]</span>`;}
+  clipboardHtml(html){
+    if(html.length>2*1024*1024||!html.includes('data-note-image'))return html;
+    return replaceElements(html,node=>node.tagName==='span'&&node.attrs?.some(attr=>attr.name==='data-note-image'),(raw,node)=>this.records.get(node.attrs.find(attr=>attr.name==='data-note-image').value)||raw);
+  }
   encode(html){
     return replaceElements(html,node=>node.tagName==='img',raw=>{
       const key=crypto.randomUUID();this.records.set(key,raw);return this.token(key);
@@ -124,7 +128,8 @@ export class ImageSession {
   uploads(content){return [...this.local.values()].filter(item=>content.includes(`ref="${item.reference}"`)).map(item=>({reference:item.reference,name:item.file.name,data:item.url.split(',')[1]}));}
   removed(content){
     const counts=new Map();
-    for(const [key,raw] of this.records)if(!this.local.has(key))counts.set(raw,(counts.get(raw)||0)+1);
+    const local=new Set([...this.local.keys()].map(key=>this.records.get(key)));
+    for(const raw of this.records.values())if(!local.has(raw))counts.set(raw,(counts.get(raw)||0)+1);
     let count=0;for(const [raw,initial] of counts)count+=Math.max(0,initial-(content.split(raw).length-1));return count;
   }
   bind(root,insert,onError){
