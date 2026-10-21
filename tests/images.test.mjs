@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ImageSession, imageResources } from '../ui/images.js';
 import { EditorDocument } from '../ui/editor-document.js';
+import { normalizePastedHtml } from '../ui/paste-normalizer.js';
 
 test('image tokens retain raw source and mixed editable paragraphs byte for byte',()=>{
   const source='<!-- keep -->\n<P>Before <IMG ref="a" file_id="legacy" src="relative.png" width="80"> After</P>\n';
@@ -20,4 +21,10 @@ test('resource caches are version scoped and failed reads can be retried',async(
   await Promise.all([first.load(args),first.load(args)]);assert.equal(calls,2);
   await first.load({...args,version:'v2'});assert.equal(calls,3);
   await imageResources({},load).load(args);assert.equal(calls,4);
+});
+test('clipboard normalization restores managed image HTML and keeps local aliases staged',()=>{
+  const session=new ImageSession({}),raw='<img file_id="known-file" src="relative.png" alt="Image">',token=session.encode(raw);
+  const normalized=normalizePastedHtml(session.clipboardHtml(token));assert.ok(normalized.includes('file_id="known-file"'));assert.ok(normalized.includes('relative.png'));assert.ok(!normalized.includes('data-note-image'));
+  session.records.set('local','<img ref="ns-image-one">');session.local.set('local',{});session.records.set('alias','<img ref="ns-image-one">');
+  assert.equal(session.removed(raw),0);
 });

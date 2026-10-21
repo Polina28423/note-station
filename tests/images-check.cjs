@@ -36,6 +36,12 @@ module.exports=async(page,base)=>{
         await surface.images.pending;
       }
       checks.clipboardAndDrop=surface.images.uploads(await output()).length===3;
+      const originalImage=[...root.querySelectorAll('[data-note-image]')].find(element=>surface.images.records.get(element.dataset.noteImage)?.includes('original-ref'));
+      if(mode==='classic'){surface.editor.selection.select(root,true);surface.editor.selection.collapse(false);}
+      const htmlClipboard=new DataTransfer();htmlClipboard.setData('text/html',originalImage.outerHTML);htmlClipboard.setData('text/plain','Image');
+      root.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:htmlClipboard}));
+      await surface.pasteQueue;
+      const copied=await output();checks.normalizedImageCopy=(copied.match(/ref="original-ref"/g)||[]).length===2&&!copied.includes('note-image-remove');
       surface.destroy();return checks;
     },mode);
     for(const [key,value] of Object.entries(result)){
