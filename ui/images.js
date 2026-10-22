@@ -1,9 +1,21 @@
 import { parseFragment } from './vendor/editorjs/html-parser.js';
 import { imageStrings as strings } from './strings.js';
+import { bindImageControls } from './image-controls.js';
 
 export const IMAGE_LIMIT = 10 * 1024 * 1024;
 const FORMATS = new Set(['image/png','image/jpeg','image/gif','image/webp']);
 const escape = value => String(value).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');
+
+export function resizedImageHtml(raw,width,height){
+  if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width>16384||height>16384)throw Error(strings.invalidSize);
+  return replaceElements(raw,node=>node.tagName==='img',(_,node)=>{
+    const attrs=node.attrs.filter(attr=>!['width','height'].includes(attr.name)).map(attr=>{
+      if(attr.name!=='style')return attr;
+      return {...attr,value:attr.value.split(';').filter(rule=>!/^\s*(?:width|height|min-width|min-height|max-width|max-height|aspect-ratio)\s*:/i.test(rule)).join(';')};
+    }).filter(attr=>attr.name!=='style'||attr.value.trim());
+    return `<img${attrs.map(attr=>` ${attr.name}="${escape(attr.value)}"`).join('')} width="${width}" height="${height}">`;
+  });
+}
 
 export function imageResources(note,load){
   // A new scope is created for each opened note/version. Nothing survives account changes.
@@ -29,6 +41,14 @@ function replaceElements(html, match, replace) {
   walk(tree);
   for(const [start,end,value] of edits.reverse())html=html.slice(0,start)+value+html.slice(end);
   return html;
+}
+function imageIdentity(node){
+  const attrs=Object.fromEntries(node.attrs||[]);
+  for(const name of ['ref','file_id','data-file-id','src'])if(attrs[name])return JSON.stringify([name,attrs[name]]);
+  return JSON.stringify((node.attrs||[]).filter(attr=>!['width','height','style'].includes(attr.name)));
+}
+function imageIdentities(html){
+  const result=[];replaceElements(html,node=>node.tagName==='img',(raw,node)=>{result.push(imageIdentity(node));return raw;});return result;
 }
 export function imageReference(element,note) {
   const reference=element.getAttribute('ref');
@@ -62,6 +82,7 @@ export function imagePreview(raw,note,load,local,background=false) {
       const image=document.createElement('img');image.alt=source?.getAttribute('alt') || strings.image;image.decoding='async';image.src=url;
       await image.decode();
       if(image.naturalWidth>16384||image.naturalHeight>16384||image.naturalWidth*image.naturalHeight>40_000_000)throw Error(strings.invalid);
+      box.dataset.naturalWidth=String(image.naturalWidth);box.dataset.naturalHeight=String(image.naturalHeight);
       for(const key of ['width','height']){const size=Number(source?.getAttribute(key));if(Number.isInteger(size)&&size>0&&size<=16384)image.setAttribute(key,String(size));}
       if(background){
         const bitmap=document.createElement('span');bitmap.className='image-bitmap';bitmap.setAttribute('role','img');bitmap.setAttribute('aria-label',image.alt);
@@ -78,7 +99,11 @@ export function imagePreview(raw,note,load,local,background=false) {
   run();return box;
 }
 export class ImageSession {
-  constructor(note,load){this.note=note;this.load=imageResources(note,load).load;this.records=new Map();this.local=new Map();this.pending=Promise.resolve();}
+  constructor(note,load){this.note=note;this.load=imageResources(note,load).load;this.records=new Map();this.local=new Map();this.variants=new Map();this.pending=Promise.resolve();}
+  resized(key,width,height){
+    const raw=this.records.get(key);if(!raw)throw Error(strings.invalid);
+    const next=crypto.randomUUID();this.records.set(next,resizedImageHtml(raw,width,height));this.variants.set(next,this.variants.get(key)||key);return next;
+  }
   token(key){return `<span data-note-image="${key}" contenteditable="false">[${strings.image}]</span>`;}
   clipboardHtml(html){
     if(html.length>2*1024*1024||!html.includes('data-note-image'))return html;
@@ -107,11 +132,14 @@ export class ImageSession {
       const key=element.dataset.noteImage,raw=this.records.get(key);
       if(!raw||element.querySelector('.note-image'))continue;
       element.contentEditable='false';
-      const preview=imagePreview(raw,this.note,this.load,this.local.get(key)?.url,this.background);
+      const preview=imagePreview(raw,this.note,this.load,this.local.get(this.variants.get(key)||key)?.url,this.background);
       element.replaceChildren(preview);
       if(this.onRemove){
         const button=document.createElement('button');button.type='button';button.className='note-image-remove';button.textContent='×';button.title=strings.remove;button.setAttribute('aria-label',strings.remove);
         element.append(button);
+      }
+      if(this.onResize){
+        const button=document.createElement('button');button.type='button';button.className='note-image-size';button.textContent='↔';button.title=strings.resize;button.setAttribute('aria-label',strings.resize);element.append(button);
       }
     }
   }
@@ -127,12 +155,14 @@ export class ImageSession {
   }
   uploads(content){return [...this.local.values()].filter(item=>content.includes(`ref="${item.reference}"`)).map(item=>({reference:item.reference,name:item.file.name,data:item.url.split(',')[1]}));}
   removed(content){
-    const counts=new Map();
-    const local=new Set([...this.local.keys()].map(key=>this.records.get(key)));
-    for(const raw of this.records.values())if(!local.has(raw))counts.set(raw,(counts.get(raw)||0)+1);
-    let count=0;for(const [raw,initial] of counts)count+=Math.max(0,initial-(content.split(raw).length-1));return count;
+    const counts=new Map(),current=new Map();
+    const local=new Set([...this.local.keys()].flatMap(key=>imageIdentities(this.records.get(key)||'')));
+    for(const [key,raw] of this.records)if(!this.variants.has(key))for(const identity of imageIdentities(raw))if(!local.has(identity))counts.set(identity,(counts.get(identity)||0)+1);
+    for(const identity of imageIdentities(content))current.set(identity,(current.get(identity)||0)+1);
+    let count=0;for(const [identity,initial] of counts)count+=Math.max(0,initial-(current.get(identity)||0));return count;
   }
   bind(root,insert,onError){
+    const unbindControls=this.onResize?bindImageControls(root,this,onError):()=>{};
     const handler=event=>{
       const files=[...(event.clipboardData?.files || event.dataTransfer?.files || [])];
       if(!files.length)return;
@@ -143,6 +173,6 @@ export class ImageSession {
     const remove=event=>{const button=event.target.closest?.('.note-image-remove');if(!button)return;event.preventDefault();event.stopImmediatePropagation();if(event.type==='click')this.onRemove?.(button.closest('[data-note-image]'));};
     root.addEventListener('pointerdown',remove,true);root.addEventListener('click',remove,true);
     root.addEventListener('paste',handler,true);root.addEventListener('drop',handler,true);root.addEventListener('dragover',drag);
-    return ()=>{root.removeEventListener('pointerdown',remove,true);root.removeEventListener('click',remove,true);root.removeEventListener('paste',handler,true);root.removeEventListener('drop',handler,true);root.removeEventListener('dragover',drag);};
+    return ()=>{unbindControls();root.removeEventListener('pointerdown',remove,true);root.removeEventListener('click',remove,true);root.removeEventListener('paste',handler,true);root.removeEventListener('drop',handler,true);root.removeEventListener('dragover',drag);};
   }
 }

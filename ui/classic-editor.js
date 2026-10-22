@@ -21,7 +21,7 @@ export class ClassicSurface {
       paste_data_images: false, automatic_uploads: false,
       noneditable_class: 'mceNonEditable',
       content_security_policy: "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';",
-      content_style: 'body{font:15px/1.7 Arial,sans-serif;color:#505a64;margin:20px} a{color:#176b94;text-decoration:underline;overflow-wrap:anywhere} .note-image{display:inline-flex;flex-direction:column;max-width:100%;color:#637585}.note-image img{display:block;max-width:100%;height:auto}.note-image-status{padding:8px;border:1px solid #c8d5e2;font-size:12px}[data-note-image]{display:inline-block;position:relative;max-width:100%;vertical-align:middle}.note-image-remove{position:absolute;right:4px;top:4px;min-width:30px;min-height:30px;background:white;border:1px solid #c8d5e2;cursor:pointer;font-size:22px}.mceNonEditable{display:inline-block;padding:8px 12px;background:#edf3f8;border:1px solid #cfdae5;color:#7a8a99;border-radius:3px} table{border-collapse:collapse} td,th{border:1px solid #d7e1eb;padding:8px}',
+      content_style: 'body{font:15px/1.7 Arial,sans-serif;color:#505a64;margin:20px} a{color:#176b94;text-decoration:underline;overflow-wrap:anywhere} .note-image{display:inline-flex;flex-direction:column;max-width:100%;color:#637585}.note-image img{display:block;max-width:100%;height:auto}.note-image-status{padding:8px;border:1px solid #c8d5e2;font-size:12px}[data-note-image]{display:inline-block;position:relative;max-width:100%;vertical-align:middle}.note-image-size{position:absolute;left:4px;top:4px;width:30px;height:30px;padding:0;background:white;border:1px solid #c8d5e2;border-radius:3px;color:#176b94;font-size:20px;cursor:pointer}.note-image-remove{position:absolute;right:4px;top:4px;min-width:30px;min-height:30px;background:white;border:1px solid #c8d5e2;cursor:pointer;font-size:22px}.mceNonEditable{display:inline-block;padding:8px 12px;background:#edf3f8;border:1px solid #cfdae5;color:#7a8a99;border-radius:3px} table{border-collapse:collapse} td,th{border:1px solid #d7e1eb;padding:8px}',
       contextmenu: false,
       setup: editor => {
         editor.ui.registry.addButton('noteLink',{icon:'link',tooltip:'Ссылка',onAction:()=>this.editLink()});
@@ -99,6 +99,11 @@ export class ClassicSurface {
   async load(note) {
     await this.init(); this.note = note;
     this.images=new ImageSession(note,this.loadImage);this.images.background=true;
+    this.images.onResize=(element,width,height)=>{
+      if(!element.isConnected)return;
+      this.editor.undoManager.add();this.editor.undoManager.transact(()=>{element.dataset.noteImage=this.images.resized(element.dataset.noteImage,width,height);element.replaceChildren();});
+      this.images.paint(this.editor.getBody());this.update();
+    };
     this.images.onRemove=element=>{this.editor.undoManager.transact(()=>element.remove());this.update();};
     this.editor.setContent(this.protectMedia(note.content));
     this.editor.undoManager.clear();this.editor.undoManager.add(); this.baseline = this.editor.getContent();

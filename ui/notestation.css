@@ -456,6 +456,19 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 .note-image-status{display:inline-block;padding:10px;background:#f4f7fa;border:1px solid #c8d5e2;font-size:12px;white-space:normal}
 [data-note-image]{display:inline-block;position:relative;max-width:100%;vertical-align:middle}
 .note-image-remove{position:absolute;right:4px;top:4px;min-width:30px;min-height:30px;padding:0;background:white;border:1px solid #c8d5e2;border-radius:3px;color:#505a64;font-size:22px;cursor:pointer}
+.note-image-size{position:absolute;left:4px;top:4px;width:30px;height:30px;padding:0;background:white;border:1px solid #c8d5e2;border-radius:3px;color:#176b94;font-size:20px;cursor:pointer}
+.image-size-panel{position:fixed;z-index:1100;display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px;background:#fff;border:1px solid #c8d5e2;border-radius:5px;box-shadow:0 6px 24px #22384e30;max-width:calc(100vw - 16px);font:13px/1.5 Arial,sans-serif;color:#505a64}
+.image-size-panel[hidden],.image-size-overlay[hidden]{display:none}
+.image-size-panel label{display:flex;align-items:center;gap:8px;margin:0}
+.image-size-panel input{width:84px;height:32px;box-sizing:border-box;padding:4px 8px;font:inherit;border:1px solid #c8d5e2;border-radius:3px}
+.image-size-panel button{min-height:32px;padding:4px 10px;font:inherit;border:1px solid #c8d5e2;border-radius:3px;background:#fafcfd;color:#505a64;cursor:pointer}
+.image-size-panel :is(input,button):focus-visible,.image-size-handle:focus-visible{outline:2px solid #3799be;outline-offset:2px}
+.image-size-message:empty{display:none}
+.image-size-message{flex-basis:100%;color:#a33c32}
+.image-size-overlay{position:fixed;z-index:1099;box-sizing:border-box;border:2px solid #3799be;pointer-events:none}
+.image-size-handle{position:absolute;width:14px;height:14px;min-height:0;padding:0;background:#fff;border:2px solid #3799be;pointer-events:auto;touch-action:none}
+.image-size-handle.nw{left:-7px;top:-7px;cursor:nwse-resize}.image-size-handle.ne{right:-7px;top:-7px;cursor:nesw-resize}
+.image-size-handle.sw{left:-7px;bottom:-7px;cursor:nesw-resize}.image-size-handle.se{right:-7px;bottom:-7px;cursor:nwse-resize}
 #note-html-dialog{width:min(1000px,calc(100vw - 32px))}
 #note-html-dialog h2{font-size:20px;font-weight:600}
 .html-source-options{display:flex;gap:8px;margin:16px 0}

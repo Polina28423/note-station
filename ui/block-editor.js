@@ -17,6 +17,11 @@ export class BlockSurface {
     const lib=window.NoteStationBlocks;
     if(!lib)throw Error('Не удалось загрузить Editor.js.');
     this.images=new ImageSession(note,this.loadImage);
+    this.images.onResize=async(element,width,height)=>{
+      await this.capture();if(!this.ready||!element.isConnected)return;
+      element.dataset.noteImage=this.images.resized(element.dataset.noteImage,width,height);
+      element.replaceChildren();this.images.paint($('block-content'));this.notify();await this.capture();
+    };
     this.images.onRemove=async element=>{
       await this.capture();if(!this.ready||!element.isConnected)return;
       element.remove();this.notify();await this.capture();
