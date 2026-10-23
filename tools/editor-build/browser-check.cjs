@@ -58,6 +58,7 @@ async function main(){
     await require(path.join(root,'tests/generated-id-check.cjs'))(page,`http://127.0.0.1:${port}`);
     await require(path.join(root,'tests/clipboard-import-check.cjs'))(page,`http://127.0.0.1:${port}`);
     await require(path.join(root,'tests/paste-normalizer-check.cjs'))(page,`http://127.0.0.1:${port}`);
+    await require(path.join(root,'tests/image-resize-check.cjs'))(page,`http://127.0.0.1:${port}`);
     if(errors.length){console.error(errors);process.exitCode=1;}
   } finally {await browser?.close();server.kill();}
 }
