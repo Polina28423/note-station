@@ -1,5 +1,5 @@
 import { parseFragment } from './vendor/editorjs/html-parser.js';
-import { ALIGNMENTS, normalizeColor, safeStyles, styleText } from './editor-styles.js';
+import { ALIGNMENTS, normalizeColor, safeStyles, safeInlineStyles, styleText } from './editor-styles.js';
 
 const INLINE = new Set(['b','strong','i','em','u','s','strike','del','a','br','code','mark','span','font','sub','sup']);
 export const TEXT_FLOW_TAGS=['div','p','h1','h2','h3','h4','h5','h6'];
@@ -57,7 +57,7 @@ function inlineNodes(nodes, strict, depth = 0, allowFlow = false) {
     if (node.tagName === 'br') return `<br${identity}>`;
     const body = inlineNodes(node.childNodes || [], strict, depth + 1, allowFlow);
     if(['span','font','mark'].includes(node.tagName)){
-      const styles=safeStyles(a.style,strict);
+      const styles=safeInlineStyles(a.style,strict);
       if(styles['text-align']){if(strict)throw Error('Выравнивание встроенного элемента.');delete styles['text-align'];}
       if(node.tagName==='font'){
         const color=normalizeColor(a.color);if(!color&&strict)throw Error('Особый цвет текста.');if(color)styles.color=color;
@@ -68,12 +68,12 @@ function inlineNodes(nodes, strict, depth = 0, allowFlow = false) {
     if (node.tagName === 'a') {
       const href = safeLink(a.href);
       if (strict && !href) throw Error('Особая ссылка.');
-      const styles=safeStyles(a.style,strict);
+      const styles=safeInlineStyles(a.style,strict);
       if(styles['text-align']){if(strict)throw Error('Особое выравнивание ссылки.');delete styles['text-align'];}
       const style=styleText(styles),formatted=style?`<span style="${style}">${body}</span>`:body;
       return href ? `<a${identity} href="${esc(href)}"${a.title ? ` title="${esc(a.title)}"` : ''}>${formatted}</a>` : formatted;
     }
-    const styles=safeStyles(a.style,strict);
+    const styles=safeInlineStyles(a.style,strict);
     if(styles['text-align']){if(strict)throw Error('Выравнивание встроенного элемента.');delete styles['text-align'];}
     const style=styleText(styles);
     return `<${node.tagName}${identity}${style?` style="${style}"`:''}>${body}</${node.tagName}>`;

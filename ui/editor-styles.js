@@ -3,7 +3,7 @@ export const FONT_SIZES=[8,9,10,11,12,14,16,18,20,24,28,32,36,48,72];
 export function normalizeFontFamily(value){
   if(typeof value!=='string'||value.length>256)return '';
   const families=value.split(',').map(part=>part.trim().replace(/^(["'])(.*)\1$/,'$2'));
-  const clean=families.map(part=>FONT_FAMILIES.find(font=>font.toLowerCase()===part.toLowerCase()));
+  const clean=families.map(part=>[...FONT_FAMILIES,'Helvetica'].find(font=>font.toLowerCase()===part.toLowerCase()));
   return clean.length&&clean.every(Boolean)?clean.join(','):'';
 }
 export function normalizeFontSize(value){
@@ -46,5 +46,22 @@ export function safeStyles(value,strict=false){
     result[key]=clean;
   }
   return result;
+}
+const NEUTRAL_INLINE_STYLES={
+  'font-variant-ligatures':'normal','font-variant-caps':'normal','letter-spacing':'normal',
+  orphans:'2',widows:'2','text-indent':'0px','text-transform':'none','white-space':'normal',
+  'word-spacing':'0px','-webkit-text-stroke-width':'0px','text-decoration-thickness':'initial',
+  'text-decoration-style':'initial','text-decoration-color':'initial','text-align':'start',float:'none',
+};
+export function safeInlineStyles(value,strict=false){
+  if(typeof value!=='string'||value.length>2048)return safeStyles(value,strict);
+  // Copied browser defaults do not change the presentation of an inline text span.
+  const meaningful=value.split(';').filter(rule=>{
+    const colon=rule.indexOf(':');if(colon<1)return true;
+    const key=rule.slice(0,colon).trim().toLowerCase(),raw=rule.slice(colon+1).trim().toLowerCase();
+    if(key==='display'&&/^inline(?:\s*!important)?$/.test(raw))return false;
+    return NEUTRAL_INLINE_STYLES[key]!==raw;
+  }).join(';');
+  return safeStyles(meaningful,strict);
 }
 export const styleText=styles=>Object.entries(styles).map(([key,value])=>`${key}:${value}`).join(';');
