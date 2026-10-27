@@ -2,9 +2,26 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { EditorDocument, cleanInline, renderBlock } from '../ui/editor-document.js';
-import { normalizeColor, safeStyles, normalizeFontFamily, normalizeFontSize } from '../ui/editor-styles.js';
+import { normalizeColor, safeStyles, safeInlineStyles, normalizeFontFamily, normalizeFontSize } from '../ui/editor-styles.js';
 const load = html => { const doc=new EditorDocument(html);doc.bindBaseline(doc.blocks);return doc; };
 const clone = value => structuredClone(value);
+
+test('copied browser defaults in inline ADB text remain editable without changing commands or entities',()=>{
+  const html=readFileSync(new URL('./fixtures/legacy-adb-note.html',import.meta.url),'utf8'),doc=load(html);
+  assert.equal(doc.fragments.size,0);assert.equal(doc.blocks.length,4);assert.equal(doc.serialize(doc.blocks),html);
+  const blocks=clone(doc.blocks),line=blocks.at(-1);assert.equal(line.type,'paragraph');
+  assert.ok(line.data.text.includes('font-family:Verdana,Arial,Helvetica,sans-serif'));assert.ok(line.data.text.includes('font-size:12pt'));
+  line.data.text=line.data.text.replace('целочисленная переменная','целочисленное значение');
+  const output=doc.serialize(blocks);assert.ok(output.includes('--ei &lt;имя переменой&gt; &lt;значение&gt; -  целочисленное значение'));
+  assert.ok(output.includes('broadcast&nbsp; -n "org.example.app/org.example.Receiver" --es name "John" --ei age 30'));
+  assert.ok(!output.includes('display:'));assert.ok(!output.includes('orphans:'));assert.equal(load(output).fragments.size,0);
+});
+
+test('inline browser-default allowances do not admit layout changes or active CSS',()=>{
+  assert.deepEqual(safeInlineStyles('display: inline !important; float: none; text-align:start;white-space:normal;color:#222222',true),{color:'#222222'});
+  for(const style of ['display:none','float:left','white-space:pre','position:absolute','display:inline!important;background-image:url(https://example.org)','font-weight:bold!important'])assert.throws(()=>safeInlineStyles(style,true));
+  for(const style of ['display:none','float:left','white-space:pre','position:absolute'])assert.equal(load(`<div><span style="${style}">Keep</span></div>`).blocks[0].type,'preserved');
+});
 
 test('clipboard metadata and legacy font-size classes preserve editable nested text',()=>{
   const html=readFileSync(new URL('./fixtures/legacy-clipboard-note.html',import.meta.url),'utf8'),doc=load(html);
