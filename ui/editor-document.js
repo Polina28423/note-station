@@ -1,5 +1,5 @@
 import { parseFragment } from './vendor/editorjs/html-parser.js';
-import { ALIGNMENTS, normalizeColor, safeStyles, safeInlineStyles, styleText } from './editor-styles.js';
+import { ALIGNMENTS, normalizeColor, safeStyles, safeInlineStyles, safeHeadingStyles, styleText } from './editor-styles.js';
 
 const INLINE = new Set(['b','strong','i','em','u','s','strike','del','a','br','code','mark','span','font','sub','sup']);
 export const TEXT_FLOW_TAGS=['div','p','h1','h2','h3','h4','h5','h6'];
@@ -21,6 +21,15 @@ function textIdentity(values){return (isLegacyTextId(values.id)?` id="${values.i
 const text = node => node.nodeName === '#text' ? node.value : (node.childNodes || []).map(text).join('');
 const esc = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const attrs = node => Object.fromEntries((node.attrs || []).map(a => [a.name,a.value]));
+function importedHeading(node){
+  if(!/^h[1-6]$/.test(node.tagName))return node;
+  const a=attrs(node);
+  if(a.class!==undefined&&(a.class.length>2048||!/^[-_a-zA-Z0-9\s]*$/.test(a.class)))throw Error('Особые классы заголовка.');
+  if(a.dir!==undefined&&a.dir!=='auto')throw Error('Особое направление заголовка.');
+  const plainText=(node.childNodes||[]).every(child=>['#text','#comment'].includes(child.nodeName));
+  const style=styleText(safeHeadingStyles(a.style,plainText));
+  return {...node,attrs:[...(node.attrs||[]).filter(attr=>!['class','dir','style'].includes(attr.name)),...(style?[{name:'style',value:style}]:[])]};
+}
 const children = node => (node.childNodes || []).filter(n => n.nodeName !== '#comment' && !(n.nodeName === '#text' && !n.value.trim()));
 const canonical = value => JSON.stringify(stable(value));
 function stable(value) {
@@ -41,6 +50,7 @@ function inlineNodes(nodes, strict, depth = 0, allowFlow = false) {
   return nodes.map(node => {
     if (node.nodeName === '#text') return esc(node.value);
     if(allowFlow && TEXT_FLOW_TAGS.includes(node.tagName)){
+      node=importedHeading(node);
       const a=textAttrs(node,['style'],strict),style=styleText(safeStyles(a.style,strict));
       return `<${node.tagName}${textIdentity(a)}${style?` style="${style}"`:''}>${inlineNodes(node.childNodes || [],strict,depth+1,true)}</${node.tagName}>`;
     }
@@ -179,6 +189,7 @@ function convertBase(node) {
   throw Error('Сложный фрагмент HTML.');
 }
 function convert(node){
+  node=importedHeading(node);
   const a=attrs(node);if(!a.style)return convertBase(node);
   const styles=safeStyles(a.style,true),alignment=styles['text-align'];delete styles['text-align'];
   const block=convertBase({...node,attrs:(node.attrs || []).filter(attr=>attr.name!=='style')});
@@ -225,6 +236,22 @@ export function renderBlock(block){
   const html=renderBlockBody(block),alignment=block.tunes?.alignment?.alignment ?? (block.type==='quote'?block.data.alignment:undefined);
   if(alignment!==undefined&&!ALIGNMENTS.includes(alignment))throw Error('Некорректное выравнивание.');
   return alignment&&alignment!=='left'?html.replace(/^<(\w+)/,`<$1 style="text-align:${alignment}"`):html;
+}
+
+export function normalizeImportedHeadings(html){
+  if(typeof html!=='string'||html.length>1024*1024)return html;
+  const edits=[];
+  function walk(node,depth=0){
+    if(depth>30)return;
+    const a=attrs(node),loc=node.sourceCodeLocation;
+    if(/^h[1-6]$/.test(node.tagName)&&loc&&(a.class!==undefined||a.dir==='auto')){
+      try{edits.push([loc.startOffset,loc.endOffset,renderBlock(convert(node))]);return;}catch{}
+    }
+    for(const child of node.childNodes||[])walk(child,depth+1);
+  }
+  walk(parseFragment(html,{sourceCodeLocationInfo:true}));
+  for(const [start,end,value] of edits.reverse())html=html.slice(0,start)+value+html.slice(end);
+  return html;
 }
 
 export class EditorDocument {

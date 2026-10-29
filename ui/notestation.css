@@ -223,6 +223,8 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 #block-content .ce-block:has(.ce-paragraph[data-source-tag="p"]){margin:1em 0}
 #block-content .ce-block:has(.ce-paragraph[data-source-tag="div"]){margin:0}
 #block-content .ce-header{color:#425c70;margin:8px 0}
+#block-content :is(h1,h2,h3,h4).ce-header{font-family:Arial,"Segoe UI",sans-serif;line-height:1.45;margin:1.4em 0 .6em;font-weight:650;color:#505a64}
+#block-content h1.ce-header{font-size:1.6em}#block-content h2.ce-header{font-size:1.35em}#block-content h3.ce-header{font-size:1.15em}
 #block-content .ce-popover{z-index:8}
 #block-content .ce-inline-toolbar{z-index:9}
 #block-content .cdx-input{font-family:inherit;font-size:inherit}

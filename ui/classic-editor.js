@@ -1,5 +1,6 @@
 import { ImageSession } from './images.js';
 import { normalizePastedHtml } from './paste-normalizer.js';
+import { normalizeImportedHeadings } from './editor-document.js';
 import { bindExternalLinks, updateLink } from './links.js';
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
 import { focusContent } from './editor-focus.js';
@@ -21,7 +22,7 @@ export class ClassicSurface {
       paste_data_images: false, automatic_uploads: false,
       noneditable_class: 'mceNonEditable',
       content_security_policy: "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';",
-      content_style: 'body{font:15px/1.7 Arial,sans-serif;color:#505a64;margin:20px} a{color:#176b94;text-decoration:underline;overflow-wrap:anywhere} .note-image{display:inline-flex;flex-direction:column;max-width:100%;color:#637585}.note-image img{display:block;max-width:100%;height:auto}.note-image-status{padding:8px;border:1px solid #c8d5e2;font-size:12px}[data-note-image]{display:inline-block;position:relative;max-width:100%;vertical-align:middle}.note-image-size{position:absolute;left:4px;top:4px;width:30px;height:30px;padding:0;background:white;border:1px solid #c8d5e2;border-radius:3px;color:#176b94;font-size:20px;cursor:pointer}.note-image-remove{position:absolute;right:4px;top:4px;min-width:30px;min-height:30px;background:white;border:1px solid #c8d5e2;cursor:pointer;font-size:22px}.mceNonEditable{display:inline-block;padding:8px 12px;background:#edf3f8;border:1px solid #cfdae5;color:#7a8a99;border-radius:3px} table{border-collapse:collapse} td,th{border:1px solid #d7e1eb;padding:8px}',
+      content_style: 'body{font:15px/1.7 Arial,sans-serif;color:#505a64;margin:20px} h1,h2,h3,h4{font-family:Arial,sans-serif;line-height:1.45;margin:1.4em 0 .6em;font-weight:650}h1{font-size:1.6em}h2{font-size:1.35em}h3{font-size:1.15em} a{color:#176b94;text-decoration:underline;overflow-wrap:anywhere} .note-image{display:inline-flex;flex-direction:column;max-width:100%;color:#637585}.note-image img{display:block;max-width:100%;height:auto}.note-image-status{padding:8px;border:1px solid #c8d5e2;font-size:12px}[data-note-image]{display:inline-block;position:relative;max-width:100%;vertical-align:middle}.note-image-size{position:absolute;left:4px;top:4px;width:30px;height:30px;padding:0;background:white;border:1px solid #c8d5e2;border-radius:3px;color:#176b94;font-size:20px;cursor:pointer}.note-image-remove{position:absolute;right:4px;top:4px;min-width:30px;min-height:30px;background:white;border:1px solid #c8d5e2;cursor:pointer;font-size:22px}.mceNonEditable{display:inline-block;padding:8px 12px;background:#edf3f8;border:1px solid #cfdae5;color:#7a8a99;border-radius:3px} table{border-collapse:collapse} td,th{border:1px solid #d7e1eb;padding:8px}',
       contextmenu: false,
       setup: editor => {
         editor.ui.registry.addButton('noteLink',{icon:'link',tooltip:'Ссылка',onAction:()=>this.editLink()});
@@ -72,7 +73,7 @@ export class ClassicSurface {
     return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS: ['style','form','input','button','textarea','iframe','object','embed'], ADD_ATTR: ['data-note-protected','data-note-image','contenteditable'] });
   }
   protectMedia(html) {
-    const template = document.createElement('template'); template.innerHTML = this.images ? this.images.encode(html) : html;
+    const template = document.createElement('template'); template.innerHTML = normalizeImportedHeadings(this.images ? this.images.encode(html) : html);
     this.media = new Map();
     for (const element of [...template.content.querySelectorAll('img,iframe,object,embed,audio,video')]) {
       if (!template.content.contains(element)) continue;

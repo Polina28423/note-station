@@ -3,7 +3,7 @@ export const FONT_SIZES=[8,9,10,11,12,14,16,18,20,24,28,32,36,48,72];
 export function normalizeFontFamily(value){
   if(typeof value!=='string'||value.length>256)return '';
   const families=value.split(',').map(part=>part.trim().replace(/^(["'])(.*)\1$/,'$2'));
-  const clean=families.map(part=>[...FONT_FAMILIES,'Helvetica'].find(font=>font.toLowerCase()===part.toLowerCase()));
+  const clean=families.map(part=>[...FONT_FAMILIES,'Helvetica','Segoe UI Historic'].find(font=>font.toLowerCase()===part.toLowerCase()));
   return clean.length&&clean.every(Boolean)?clean.join(','):'';
 }
 export function normalizeFontSize(value){
@@ -63,5 +63,20 @@ export function safeInlineStyles(value,strict=false){
     return NEUTRAL_INLINE_STYLES[key]!==raw;
   }).join(';');
   return safeStyles(meaningful,strict);
+}
+export function safeHeadingStyles(value,plainText=false){
+  if(!value)return {};
+  if(typeof value!=='string'||value.length>2048)throw Error('Сложное оформление заголовка.');
+  const meaningful=value.split(';').filter(rule=>{
+    const colon=rule.indexOf(':');if(colon<1)return true;
+    const key=rule.slice(0,colon).trim().toLowerCase(),raw=rule.slice(colon+1).trim().toLowerCase();
+    if(['font-size','font-weight'].includes(key)&&raw==='inherit')return false;
+    if(['margin','padding'].includes(key)&&/^0(?:px)?(?:\s+0(?:px)?){0,3}$/.test(raw))return false;
+    if(key==='outline'&&raw==='none')return false;
+    // A single text run needs no website flex container in the document editor.
+    if(plainText&&((key==='display'&&raw==='flex')||(key==='align-items'&&raw==='center')))return false;
+    return true;
+  }).join(';');
+  return safeInlineStyles(meaningful,true);
 }
 export const styleText=styles=>Object.entries(styles).map(([key,value])=>`${key}:${value}`).join(';');
