@@ -1,10 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { EditorDocument, cleanInline, renderBlock } from '../ui/editor-document.js';
+import { EditorDocument, cleanInline, renderBlock, normalizeImportedHeadings } from '../ui/editor-document.js';
 import { normalizeColor, safeStyles, safeInlineStyles, normalizeFontFamily, normalizeFontSize } from '../ui/editor-styles.js';
 const load = html => { const doc=new EditorDocument(html);doc.bindBaseline(doc.blocks);return doc; };
 const clone = value => structuredClone(value);
+
+test('plain copied social headings normalize website layout while retaining editable semantics and source',()=>{
+  const html=readFileSync(new URL('./fixtures/legacy-social-heading.html',import.meta.url),'utf8'),doc=load(html);
+  assert.equal(doc.fragments.size,0);assert.equal(doc.blocks[0].type,'header');assert.equal(doc.blocks[0].data.level,1);assert.equal(doc.blocks[0].tunes.alignment.alignment,'center');assert.equal(doc.serialize(doc.blocks),html);
+  const blocks=clone(doc.blocks);blocks[0].data.text=blocks[0].data.text.replace('Мастер','Столяр');
+  const output=doc.serialize(blocks);assert.ok(output.includes('Столяр'));assert.ok(output.includes('text-align:center'));assert.ok(output.includes('Segoe UI Historic'));assert.ok(!output.includes('display:'));assert.ok(!output.includes('class='));assert.ok(output.endsWith(html.slice(html.indexOf('<div>'))));assert.equal(load(output).fragments.size,0);
+  const nested=load(`<div>${html.slice(0,html.indexOf('<div>'))}</div>`);assert.equal(nested.fragments.size,0);assert.ok(nested.blocks[0].data.text.startsWith('<h1 style='));
+  const classic=normalizeImportedHeadings(html);assert.ok(classic.startsWith('<h1 style="text-align:center">'));assert.ok(!classic.includes('display:flex'));assert.ok(classic.endsWith(html.slice(html.indexOf('<div>'))));
+});
+
+test('heading import still protects active attributes, unknown layout and nontrivial flex contents',()=>{
+  for(const html of ['<h1 class="site" onclick="bad()">Text</h1>','<h1 dir="rtl">Text</h1>','<h1 style="display:none">Text</h1>','<h1 style="position:fixed">Text</h1>','<h1 style="display:flex"><span>A</span><span>B</span></h1>'])assert.equal(load(html).blocks[0].type,'preserved');
+});
 
 test('copied browser defaults in inline ADB text remain editable without changing commands or entities',()=>{
   const html=readFileSync(new URL('./fixtures/legacy-adb-note.html',import.meta.url),'utf8'),doc=load(html);
