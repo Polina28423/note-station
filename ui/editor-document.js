@@ -1,5 +1,5 @@
 import { parseFragment } from './vendor/editorjs/html-parser.js';
-import { ALIGNMENTS, normalizeColor, safeStyles, safeInlineStyles, safeHeadingStyles, styleText } from './editor-styles.js';
+import { ALIGNMENTS, normalizeColor, safeStyles, safeInlineStyles, safeHeadingStyles, safeCopiedTextStyles, styleText } from './editor-styles.js';
 
 const INLINE = new Set(['b','strong','i','em','u','s','strike','del','a','br','code','mark','span','font','sub','sup']);
 export const TEXT_FLOW_TAGS=['div','p','h1','h2','h3','h4','h5','h6'];
@@ -21,6 +21,20 @@ function textIdentity(values){return (isLegacyTextId(values.id)?` id="${values.i
 const text = node => node.nodeName === '#text' ? node.value : (node.childNodes || []).map(text).join('');
 const esc = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const attrs = node => Object.fromEntries((node.attrs || []).map(a => [a.name,a.value]));
+function copiedTextMetadata(name,value){
+  if(name==='data-path-to-node')return typeof value==='string'&&value.length<=256&&/^\d{1,6}(?:,\d{1,6})*$/.test(value);
+  if(name==='data-index-in-node')return /^\d{1,12}$/.test(value);
+  if(name==='id')return /^p-rc_[a-f0-9]{8,64}-\d{1,16}$/.test(value);
+  return false;
+}
+function hasCopiedMetadata(node){return (node.attrs||[]).some(attr=>copiedTextMetadata(attr.name,attr.value));}
+function importedCopiedText(node,inherited=false,depth=0){
+  if(depth>30)throw Error('Слишком глубокая разметка текста.');
+  const a=attrs(node),copied=inherited||hasCopiedMetadata(node),math=copied&&node.tagName==='span'&&a.class==='math-inline'&&typeof a['data-math']==='string'&&a['data-math'].length<=2048;
+  const values=(node.attrs||[]).filter(attr=>!copiedTextMetadata(attr.name,attr.value)&&!(math&&['class','data-math'].includes(attr.name))&&!(copied&&attr.name==='style'));
+  if(copied){const style=styleText(safeCopiedTextStyles(a.style,['ul','ol','li'].includes(node.tagName)));if(style)values.push({name:'style',value:style});}
+  return {...node,attrs:values,childNodes:(node.childNodes||[]).map(child=>importedCopiedText(child,copied,depth+1))};
+}
 function importedHeading(node){
   if(!/^h[1-6]$/.test(node.tagName))return node;
   const a=attrs(node);
@@ -124,7 +138,7 @@ function readList(node, rootTag = node.tagName, depth = 0) {
     if (check) { onlyAttrs(first,['type','checked','disabled']); parts.splice(parts.indexOf(first),1); }
     const sublists = parts.filter(n => ['ul','ol'].includes(n.tagName));
     if (sublists.length > 1 || (sublists.length && parts.slice(parts.indexOf(sublists[0])+1).some(n=>n.nodeName!=='#text'||n.value.trim()))) throw Error('Сложный вложенный список.');
-    const content = inlineNodes(parts.filter(n=>!sublists.includes(n)),true).replace(check ? /^\s+/ : /$^/,'');
+    const content = listText(parts.filter(n=>!sublists.includes(n))).replace(check ? /^\s+/ : /$^/,'');
     const nested = sublists[0] ? readList(sublists[0],rootTag,depth+1) : null;
     if (nested && nested.style !== (check ? 'checklist' : rootTag==='ol' ? 'ordered' : 'unordered')) throw Error('Смешанный вложенный список.');
     return {content, meta:check ? {checked:Object.hasOwn(attrs(first),'checked')} : {}, items:nested?.items || []};
@@ -134,6 +148,21 @@ function readList(node, rootTag = node.tagName, depth = 0) {
   const start = a.start === undefined ? 1 : Number(a.start);
   if (!Number.isSafeInteger(start) || start < 1 || !counter) throw Error('Особая нумерация списка.');
   return {style:checklist ? 'checklist' : rootTag==='ol' ? 'ordered' : 'unordered', meta:rootTag==='ol' ? {start,counterType:counter} : {}, items};
+}
+function listText(nodes){
+  let content='',previousBlock=false;
+  for(const node of nodes){
+    const block=['p','div'].includes(node.tagName);
+    if(node.nodeName==='#text'&&/^[\t\r\n ]*$/.test(node.value)&&(previousBlock||!content))continue;
+    let value;
+    if(block){
+      onlyAttrs(node,['style']);const style=styleText(safeStyles(attrs(node).style,true)),body=inlineNodes(node.childNodes||[],true,0,true);
+      value=style?`<span style="${style}">${body}</span>`:body;
+    }else value=inlineNodes([node],true);
+    if(content&&(previousBlock||block))content+='<br>';
+    content+=value;previousBlock=block;
+  }
+  return content;
 }
 function readTable(node) {
   onlyAttrs(node);
@@ -238,14 +267,14 @@ export function renderBlock(block){
   return alignment&&alignment!=='left'?html.replace(/^<(\w+)/,`<$1 style="text-align:${alignment}"`):html;
 }
 
-export function normalizeImportedHeadings(html){
+export function normalizeImportedText(html){
   if(typeof html!=='string'||html.length>1024*1024)return html;
   const edits=[];
   function walk(node,depth=0){
     if(depth>30)return;
     const a=attrs(node),loc=node.sourceCodeLocation;
-    if(/^h[1-6]$/.test(node.tagName)&&loc&&(a.class!==undefined||a.dir==='auto')){
-      try{edits.push([loc.startOffset,loc.endOffset,renderBlock(convert(node))]);return;}catch{}
+    if(loc&&((/^h[1-6]$/.test(node.tagName)&&(a.class!==undefined||a.dir==='auto'))||hasCopiedMetadata(node))){
+      try{edits.push([loc.startOffset,loc.endOffset,renderBlock(convert(importedCopiedText(node)))]);return;}catch{}
     }
     for(const child of node.childNodes||[])walk(child,depth+1);
   }
@@ -257,20 +286,25 @@ export function normalizeImportedHeadings(html){
 export class EditorDocument {
   constructor(html) {
     if(typeof html!=='string'||html.length>8*1024*1024)throw Error('Некорректный размер заметки.');
-    this.html=html;this.records=new Map();this.fragments=new Map();this.blocks=[];this.tail='';
+    this.html=html;this.records=new Map();this.fragments=new Map();this.blocks=[];this.head='';this.tail='';
     if(html.length>1024*1024){this.addProtected(html,'');return;}
     let errors=false;
     const tree=parseFragment(html,{sourceCodeLocationInfo:true,onParseError:()=>{errors=true;}});
-    let cursor=0;
+    let cursor=0,sourceNodes=tree.childNodes;
+    const meaningful=children(tree),wrapper=meaningful.length===1&&meaningful[0];
+    if(wrapper?.tagName==='div'&&!wrapper.attrs?.length&&wrapper.sourceCodeLocation?.startTag&&wrapper.sourceCodeLocation?.endTag&&children(wrapper).some(node=>['ul','ol'].includes(node.tagName))){
+      cursor=wrapper.sourceCodeLocation.startTag.endOffset;this.head=html.slice(0,cursor);sourceNodes=wrapper.childNodes;
+    }
+    const bodyStart=cursor;
     const ranges=[];
-    for(const node of tree.childNodes) {
+    for(const node of sourceNodes) {
       if(ranges.length>=10000){errors=true;break;}
       const loc=node.sourceCodeLocation;
       if(!loc || loc.startOffset<cursor || loc.endOffset<loc.startOffset){errors=true;break;}
       ranges.push({node,start:loc.startOffset,end:loc.endOffset});cursor=loc.endOffset;
     }
-    if(errors) {if(html)this.addProtected(html,'');return;}
-    cursor=0;
+    if(errors) {this.head='';if(html)this.addProtected(html,'');return;}
+    cursor=bodyStart;
     for(let index=0;index<ranges.length;index++) {
       const {node,start}=ranges[index];let end=ranges[index].end;
       // Zero-height legacy wrappers stay in the raw prefix, not editable blank blocks.
@@ -285,7 +319,7 @@ export class EditorDocument {
         }
       }
       const raw=html.slice(start,end),prefix=html.slice(cursor,start);cursor=end;
-      try {this.add(inline?{type:'paragraph',data:{text:inlineNodes(flow,true)}}:convert(node),raw,prefix);} catch {this.addProtected(raw,prefix);}
+      try {this.add(inline?{type:'paragraph',data:{text:inlineNodes(flow.map(item=>importedCopiedText(item)),true)}}:convert(importedCopiedText(node)),raw,prefix);} catch {this.addProtected(raw,prefix);}
     }
     this.tail=html.slice(cursor);
   }
@@ -314,7 +348,7 @@ export class EditorDocument {
     if(!Array.isArray(blocks)||blocks.length>10000||new Set(blocks.map(b=>b.id)).size!==blocks.length)throw Error('Некорректная структура заметки.');
     if(this.missingProtected(blocks).some(k=>!allowRemoved.includes(k)))throw Error('Подтвердите удаление защищённых фрагментов.');
     if(documentSignature(blocks)===this.baseline)return this.html;
-    return blocks.map(block=>{
+    return this.head+blocks.map(block=>{
       const record=this.records.get(block.id);
       if(record&&blockSignature(block)===record.baseline)return record.prefix+record.source;
       if(block.type==='preserved')return (record?.prefix || '')+this.fragments.get(block.data.key);

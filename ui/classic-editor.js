@@ -1,6 +1,6 @@
 import { ImageSession } from './images.js';
 import { normalizePastedHtml } from './paste-normalizer.js';
-import { normalizeImportedHeadings } from './editor-document.js';
+import { normalizeImportedText } from './editor-document.js';
 import { bindExternalLinks, updateLink } from './links.js';
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
 import { focusContent } from './editor-focus.js';
@@ -73,7 +73,7 @@ export class ClassicSurface {
     return window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS: ['style','form','input','button','textarea','iframe','object','embed'], ADD_ATTR: ['data-note-protected','data-note-image','contenteditable'] });
   }
   protectMedia(html) {
-    const template = document.createElement('template'); template.innerHTML = normalizeImportedHeadings(this.images ? this.images.encode(html) : html);
+    const template = document.createElement('template'); template.innerHTML = normalizeImportedText(this.images ? this.images.encode(html) : html);
     this.media = new Map();
     for (const element of [...template.content.querySelectorAll('img,iframe,object,embed,audio,video')]) {
       if (!template.content.contains(element)) continue;
