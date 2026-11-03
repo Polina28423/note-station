@@ -1,10 +1,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { EditorDocument, cleanInline, renderBlock, normalizeImportedHeadings } from '../ui/editor-document.js';
+import { EditorDocument, cleanInline, renderBlock, normalizeImportedText } from '../ui/editor-document.js';
 import { normalizeColor, safeStyles, safeInlineStyles, normalizeFontFamily, normalizeFontSize } from '../ui/editor-styles.js';
 const load = html => { const doc=new EditorDocument(html);doc.bindBaseline(doc.blocks);return doc; };
 const clone = value => structuredClone(value);
+
+test('copied rich-text wrapper imports nested lists, math text and blank paragraphs without protected content',()=>{
+  const html=readFileSync(new URL('./fixtures/legacy-copied-lists.html',import.meta.url),'utf8'),doc=load(html);
+  assert.equal(doc.fragments.size,0);assert.equal(doc.blocks.length,11);assert.equal(doc.serialize(doc.blocks),html);
+  const lists=doc.blocks.filter(block=>block.type==='list');assert.equal(lists.length,4);assert.equal(lists[1].data.items[1].items.length,4);assert.ok(lists[1].data.items[1].items[0].content.includes('$\\mu$'));
+  assert.ok(doc.blocks[0].data.text.includes(' '));assert.ok(doc.blocks[1].data.text.includes('ext-gen548'));
+  const blocks=clone(doc.blocks);blocks[4].data.items[1].items[0].content+=' updated';
+  const output=doc.serialize(blocks);assert.ok(output.startsWith('<div>'));assert.match(output,/<\/div>\r?\n$/);assert.ok(output.includes('$\\mu$'));assert.ok(output.includes(' updated'));assert.equal(load(output).fragments.size,0);
+  assert.equal(doc.serialize([]).trimEnd(),'<div></div>');
+  const classic=normalizeImportedText(html);assert.ok(!classic.includes('data-path-to-node'));assert.ok(!classic.includes('data-index-in-node'));assert.ok(!classic.includes('data-math'));assert.ok(!classic.includes('p-rc_'));assert.ok(!classic.includes('!important'));assert.ok(classic.includes('$\\mu$'));assert.equal(load(classic).fragments.size,0);
+});
+
+test('copied text metadata never relaxes unknown attributes, unsafe styles or malformed source markers',()=>{
+  for(const html of ['<p data-path-to-node="bad">Text</p>','<p data-path-to-node="1" onclick="bad()">Text</p>','<p data-path-to-node="1" style="position:fixed!important">Text</p>','<p data-path-to-node="1" style="background-image:url(https://example.org)!important">Text</p>','<p data-path-to-node="1" id="save-note">Text</p>','<p data-path-to-node="1"><span class="math-inline" data-math="x" onclick="bad()">x</span></p>'])assert.equal(load(html).blocks[0].type,'preserved');
+  const doc=load('<div><p>Before</p><ul><li><p>A</p><p>&nbsp;</p><p>B</p></li></ul><p>After</p></div>');assert.equal(doc.fragments.size,0);assert.equal(doc.blocks[1].data.items[0].content,'A<br> <br>B');
+  assert.equal(load('<ul><li>&nbsp;</li></ul>').blocks[0].data.items[0].content,' ');
+});
 
 test('plain copied social headings normalize website layout while retaining editable semantics and source',()=>{
   const html=readFileSync(new URL('./fixtures/legacy-social-heading.html',import.meta.url),'utf8'),doc=load(html);
@@ -12,7 +29,7 @@ test('plain copied social headings normalize website layout while retaining edit
   const blocks=clone(doc.blocks);blocks[0].data.text=blocks[0].data.text.replace('Мастер','Столяр');
   const output=doc.serialize(blocks);assert.ok(output.includes('Столяр'));assert.ok(output.includes('text-align:center'));assert.ok(output.includes('Segoe UI Historic'));assert.ok(!output.includes('display:'));assert.ok(!output.includes('class='));assert.ok(output.endsWith(html.slice(html.indexOf('<div>'))));assert.equal(load(output).fragments.size,0);
   const nested=load(`<div>${html.slice(0,html.indexOf('<div>'))}</div>`);assert.equal(nested.fragments.size,0);assert.ok(nested.blocks[0].data.text.startsWith('<h1 style='));
-  const classic=normalizeImportedHeadings(html);assert.ok(classic.startsWith('<h1 style="text-align:center">'));assert.ok(!classic.includes('display:flex'));assert.ok(classic.endsWith(html.slice(html.indexOf('<div>'))));
+  const classic=normalizeImportedText(html);assert.ok(classic.startsWith('<h1 style="text-align:center">'));assert.ok(!classic.includes('display:flex'));assert.ok(classic.endsWith(html.slice(html.indexOf('<div>'))));
 });
 
 test('heading import still protects active attributes, unknown layout and nontrivial flex contents',()=>{
