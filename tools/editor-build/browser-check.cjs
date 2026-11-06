@@ -34,7 +34,7 @@ async function main(){
     const classic=await page.locator('#results').textContent();console.log(classic);
     if(classic.includes('FAIL'))process.exitCode=1;
     await page.goto(`http://127.0.0.1:${port}/content-check.html`);
-    await page.waitForFunction(()=>document.getElementById('results').textContent.split('PASS ').length>=6||document.getElementById('results').textContent.includes('FAIL'));
+    await page.waitForFunction(()=>document.getElementById('results').textContent.split('PASS ').length>=12||document.getElementById('results').textContent.includes('FAIL'));
     const content=await page.locator('#results').textContent();console.log(content);
     if(content.includes('FAIL'))process.exitCode=1;
     const appChecks=await require(path.join(root,'tests/app-editor-settings-check.cjs'))(page,`http://127.0.0.1:${port}`);
