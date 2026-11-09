@@ -33,6 +33,7 @@ export const linkStrings = Object.freeze({
   unavailable: 'Открытие ссылок недоступно.',
   stale: 'Текст изменился. Откройте окно ссылки заново.',
   openHint: 'Открыть сайт в браузере',
+  youtubePlayer: 'Проигрыватель YouTube',
 });
 
 export const settingsStrings = Object.freeze({

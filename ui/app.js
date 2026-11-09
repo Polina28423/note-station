@@ -74,6 +74,13 @@ bindNoteHistory({
   },
 });
 const noteBody=$('note-content');
+const readerDocument = $('reader-document');
+new MutationObserver(() => {
+  for (const player of noteBody.querySelectorAll('.note-video iframe[data-video-source]')) {
+    if (readerDocument.hidden) player.removeAttribute('src');
+    else if (!player.hasAttribute('src')) player.src = player.dataset.videoSource;
+  }
+}).observe(readerDocument, { attributes: true, attributeFilter: ['hidden'] });
 bindExternalLinks(noteBody,url=>invoke('open_external_url',{url}),status);
 bindExternalLinks($('history-preview'),url=>invoke('open_external_url',{url}),message=>{$('history-status').textContent=message;});
 let bodyPointer=false;
@@ -95,7 +102,7 @@ document.addEventListener('pointerup',()=>{setTimeout(()=>{bodyPointer=false;},0
 noteBody.addEventListener('pointercancel',()=>{bodyPointer=false;});
 noteBody.addEventListener('click',event=>{
   bodyPointer=false;
-  if(event.target.closest?.('a')||!editableNote()||window.getSelection()?.toString())return;
+  if(event.target.closest?.('a,.note-video')||!editableNote()||window.getSelection()?.toString())return;
   noteEditor.start(currentNote,{focusBody:true,anchor:bodyAnchor(event)});
 });
 noteBody.addEventListener('focus',()=>{if(!bodyPointer&&editableNote())noteEditor.start(currentNote,{focusBody:true});});
@@ -124,7 +131,7 @@ function displayNote(note) {
   if(editable){noteBody.tabIndex=0;noteBody.title='Нажмите на текст, чтобы редактировать';noteBody.setAttribute('aria-label','Текст заметки. Перейдите сюда для редактирования.');}
   else {noteBody.removeAttribute('tabindex');noteBody.removeAttribute('title');noteBody.removeAttribute('aria-label');}
   if (note.encrypted) { $('note-content').textContent = 'Расшифровка пока не поддерживается. Откройте заметку в официальном клиенте.'; copyText = ''; }
-  else { $('note-content').replaceChildren(safeNoteFragment(note.content,{note,load:args=>invoke('get_note_image',args)})); copyText = htmlToText(note.content); }
+  else { $('note-content').replaceChildren(safeNoteFragment(note.content,{note,load:args=>invoke('get_note_image',args)},{playYouTube:true})); copyText = htmlToText(note.content); }
   $('copy-note').disabled = note.encrypted;
   $('note-history').disabled = note.encrypted;
 }

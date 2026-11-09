@@ -7,6 +7,7 @@ const ALLOWED = new Set(['P','DIV','BR','H1','H2','H3','H4','H5','H6','STRONG','
 const DROP = new Set(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','TEMPLATE','SVG','MATH','NOSCRIPT']);
 const YOUTUBE_WATCH_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com']);
 const YOUTUBE_EMBED_HOSTS = new Set([...YOUTUBE_WATCH_HOSTS, 'youtube-nocookie.com', 'www.youtube-nocookie.com']);
+const PLAYER_ORIGIN = 'https://www.youtube-nocookie.com';
 
 function youtubeVideoId(value, isEmbed) {
   const href = normalizeWebUrl(value?.replace(/\\([:.])/g, '$1'));
@@ -34,12 +35,31 @@ function videoLink(id) {
   return link;
 }
 
-export function safeNoteFragment(html, images) {
+export function safeNoteFragment(html, images, { playYouTube = false } = {}) {
   const resources=images&&imageResources(images.note,images.load);
   const template = document.createElement('template');
   template.innerHTML = html;
   const fragment = document.createDocumentFragment();
   let remaining = 50000;
+  function appendVideo(target, id, link = videoLink(id)) {
+    if (!playYouTube) {
+      target.append(link);
+      return;
+    }
+    const block = document.createElement('span');
+    block.className = 'note-video';
+    const player = document.createElement('iframe');
+    player.title = linkStrings.youtubePlayer;
+    player.loading = 'lazy';
+    player.referrerPolicy = 'strict-origin-when-cross-origin';
+    player.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+    player.allowFullscreen = true;
+    player.dataset.videoSource = `${PLAYER_ORIGIN}/embed/${id}`;
+    player.src = player.dataset.videoSource;
+    block.append(player, link);
+    target.append(block);
+  }
+
   function copy(source, target, depth = 0, linkedVideos = null) {
     for (const node of source.childNodes) {
       if (--remaining < 0 || depth > 80) return;
@@ -50,7 +70,7 @@ export function safeNoteFragment(html, images) {
       if (tag === 'IFRAME') {
         const id = youtubeVideoId(node.getAttribute('src'), true);
         if (id && linkedVideos) linkedVideos.add(id);
-        else if (id) target.append(videoLink(id));
+        else if (id) appendVideo(target, id);
         continue;
       }
       if (DROP.has(tag)) continue;
@@ -68,12 +88,14 @@ export function safeNoteFragment(html, images) {
           copy(node, link, depth + 1, videos);
           const watchId = youtubeVideoId(href, false);
           const matching = watchId || youtubeVideoId(href, true);
-          if (videos.delete(matching) && !link.textContent.trim() && !link.querySelector('img,.note-image')) {
+          const hasMatchingVideo = videos.delete(matching);
+          if (hasMatchingVideo && !link.textContent.trim() && !link.querySelector('img,.note-image')) {
             if (!watchId) link.href = videoLink(matching).href;
             link.textContent = link.href;
           }
-          if (link.hasChildNodes()) target.append(link);
-          for (const id of videos) target.append(videoLink(id));
+          if (hasMatchingVideo) appendVideo(target, matching, link);
+          else if (link.hasChildNodes()) target.append(link);
+          for (const id of videos) appendVideo(target, id);
         } else { copy(node, target, depth + 1, linkedVideos); }
         continue;
       }

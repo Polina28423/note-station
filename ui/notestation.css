@@ -335,6 +335,9 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 #format-link-form input:focus-visible,#format-link-form button:focus-visible{outline:2px solid #3799be;outline-offset:2px}
 #format-link-form button[type="submit"]{background:#169fd0;color:#fff;border-color:#138dbb}
 #note-content a,#history-preview a,.preserved-preview a{color:#176b94;text-decoration:underline;cursor:pointer;overflow-wrap:anywhere}
+.note-video{display:block;width:min(100%,640px);margin:8px 0;white-space:normal}
+.note-video iframe{display:block;width:100%;min-height:200px;aspect-ratio:16/9;border:0;border-radius:3px;background:#161b20}
+.note-video>a{display:inline-block;margin-top:4px;font-size:.875em}
 #block-content a{color:#176b94;text-decoration:underline;cursor:pointer;overflow-wrap:anywhere}
 #note-content a:focus-visible,#history-preview a:focus-visible{outline:2px solid #3799be;outline-offset:2px}
 #app-settings[open]{display:flex;flex-direction:column}
