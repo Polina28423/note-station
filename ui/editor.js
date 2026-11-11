@@ -96,7 +96,7 @@ export class NoteEditor {
     window.addEventListener('beforeunload',e=>{if(this.dirty()||this.saving){e.preventDefault();e.returnValue='';}});
     window.addEventListener('keydown',e=>{
       if(!this.active)return;
-      if($('format-link-dialog').open||$('style-color-dialog').open||$('spelling-dialog')?.open||$('note-tags-dialog')?.open||$('note-html-dialog')?.open){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s')e.preventDefault();return;}
+      if($('format-link-dialog').open||$('style-color-dialog').open||$('spelling-dialog')?.open||$('note-tags-dialog')?.open||$('note-html-dialog')?.open||document.querySelector('.video-link-dialog[open]')){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s')e.preventDefault();return;}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();this.openLink();return;}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();this.save();}
       if(this.mode==='blocks'&&(e.ctrlKey||e.metaKey)&&e.target.closest?.('#block-content')&&['z','y'].includes(e.key.toLowerCase())) {

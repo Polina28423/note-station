@@ -4,6 +4,8 @@ import { bindExternalLinks, updateLink } from './links.js';
 import { captureTextRegions, spellingRange } from './spelling-adapter.js';
 import { EditorDocument, documentSignature, cleanInline, TEXT_FLOW_TAGS, isLegacyTextId, isLegacyFontClass } from './editor-document.js';
 import { safeNoteFragment } from './content.js';
+import { standaloneYouTubeId } from './youtube.js';
+import { makeVideoEditor } from './video-edit.js';
 import { focusContent, editableTarget } from './editor-focus.js';
 import { ALIGNMENTS, normalizeColor, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 
@@ -27,6 +29,7 @@ export class BlockSurface {
       element.remove();this.notify();await this.capture();
     };
     this.document=new EditorDocument(this.images.encode(note.content));
+    const videoPreviews = new Set();
     this.alignments=new Map();
     const surface=this;
     class AlignmentTune {
@@ -39,13 +42,31 @@ export class BlockSurface {
     }
     class Preserved {
       static get isReadOnlySupported(){return true;}
-      static get sanitize(){return {key:false};}
-      constructor({data}){this.data={key:data.key};}
+      static get sanitize(){return {key:false,videoId:false};}
+      constructor({data}){this.data={...data};}
       render(){
         const box=document.createElement('section');box.className='preserved-fragment';box.contentEditable='false';
-        const label=document.createElement('strong');label.textContent='Сохранённый фрагмент';box.append(label);
         const raw=surface.document.fragments.get(this.data.key);
         if(raw===undefined)throw Error('Неизвестный защищённый фрагмент.');
+        const originalId = standaloneYouTubeId(raw);
+        if (originalId) {
+          const key = this.data.key;
+          box.className = 'video-edit-container';
+          box.append(makeVideoEditor(document, this.data.videoId || originalId, {
+            showPreview: videoPreviews.has(key),
+            onPreview: shown => shown ? videoPreviews.add(key) : videoPreviews.delete(key),
+            onChange: async id => {
+              await surface.capture();
+              if (!surface.ready || !box.isConnected) return false;
+              if (id === originalId) delete this.data.videoId;
+              else this.data.videoId = id;
+              await surface.capture();
+              return true;
+            },
+          }));
+          return box;
+        }
+        const label=document.createElement('strong');label.textContent='Сохранённый фрагмент';box.append(label);
         const preview=document.createElement('div');preview.className='preserved-preview';preview.append(safeNoteFragment(raw.slice(0,100000)));
         if(!preview.textContent.trim())preview.textContent=/\bimg\b/i.test(raw)?'Изображение':'Вложение или особое оформление';
         const hint=document.createElement('small');hint.textContent='Исходное содержимое сохранится. Для изменения используйте классический редактор.';

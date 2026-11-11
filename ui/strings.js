@@ -34,6 +34,14 @@ export const linkStrings = Object.freeze({
   stale: 'Текст изменился. Откройте окно ссылки заново.',
   openHint: 'Открыть сайт в браузере',
   youtubePlayer: 'Проигрыватель YouTube',
+  youtubePreview: 'Предпросмотр',
+  youtubeLink: 'Ссылка',
+  youtubeEdit: 'Изменить ссылку',
+  youtubeUrl: 'Адрес ролика YouTube',
+  youtubeInvalid: 'Укажите ссылку на ролик YouTube.',
+  youtubeChangeFailed: 'Не удалось изменить ссылку на ролик.',
+  youtubeApply: 'Применить',
+  youtubeCancel: 'Отмена',
 });
 
 export const settingsStrings = Object.freeze({

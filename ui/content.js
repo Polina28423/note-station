@@ -2,23 +2,11 @@ import { imagePreview, imageResources } from './images.js';
 import { linkStrings } from './strings.js';
 import { normalizeWebUrl } from './links.js';
 import { normalizeColor, safeStyles } from './editor-styles.js';
+import { youtubeVideoId, youtubeWatchUrl } from './youtube.js';
 // Only explicitly validated presentation values are copied; server handlers/resources are not.
 const ALLOWED = new Set(['P','DIV','BR','H1','H2','H3','H4','H5','H6','STRONG','B','EM','I','U','S','STRIKE','DEL','UL','OL','LI','BLOCKQUOTE','PRE','CODE','HR','TABLE','THEAD','TBODY','TFOOT','TR','TD','TH','SUP','SUB','SPAN','MARK','FONT']);
 const DROP = new Set(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','TEMPLATE','SVG','MATH','NOSCRIPT']);
-const YOUTUBE_WATCH_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com']);
-const YOUTUBE_EMBED_HOSTS = new Set([...YOUTUBE_WATCH_HOSTS, 'youtube-nocookie.com', 'www.youtube-nocookie.com']);
 const PLAYER_ORIGIN = 'https://www.youtube-nocookie.com';
-
-function youtubeVideoId(value, isEmbed) {
-  const href = normalizeWebUrl(value?.replace(/\\([:.])/g, '$1'));
-  if (!href) return '';
-  const url = new URL(href);
-  const hosts = isEmbed ? YOUTUBE_EMBED_HOSTS : YOUTUBE_WATCH_HOSTS;
-  if (url.port || !hosts.has(url.hostname)) return '';
-  const id = isEmbed ? url.pathname.match(/^\/embed\/([\w-]{11})\/?$/)?.[1]
-    : url.pathname === '/watch' ? url.searchParams.get('v') : '';
-  return /^[\w-]{11}$/.test(id || '') ? id : '';
-}
 
 function externalLink(href) {
   const link = document.createElement('a');
@@ -29,7 +17,7 @@ function externalLink(href) {
 }
 
 function videoLink(id) {
-  const href = `https://www.youtube.com/watch?v=${id}`;
+  const href = youtubeWatchUrl(id);
   const link = externalLink(href);
   link.textContent = href;
   return link;

@@ -1,4 +1,5 @@
 import { parseFragment } from './vendor/editorjs/html-parser.js';
+import { standaloneYouTubeId, youtubeEmbedHtml } from './youtube.js';
 import { ALIGNMENTS, normalizeColor, safeStyles, safeInlineStyles, safeHeadingStyles, safeCopiedTextStyles, styleText } from './editor-styles.js';
 
 const INLINE = new Set(['b','strong','i','em','u','s','strike','del','a','br','code','mark','span','font','sub','sup']);
@@ -351,7 +352,10 @@ export class EditorDocument {
     return this.head+blocks.map(block=>{
       const record=this.records.get(block.id);
       if(record&&blockSignature(block)===record.baseline)return record.prefix+record.source;
-      if(block.type==='preserved')return (record?.prefix || '')+this.fragments.get(block.data.key);
+      if(block.type==='preserved'){
+        const raw=this.fragments.get(block.data.key), id=block.data.videoId;
+        return (record?.prefix || '')+(id&&standaloneYouTubeId(raw)?`<div>${youtubeEmbedHtml(id)}</div>`:raw);
+      }
       let rendered=renderBlock(block);
       if(block.type==='paragraph'&&record&&!/^\s*<p[\s>]/i.test(record.source))rendered=rendered.replace(/^<p(?=[\s>])/,'<div').replace(/<\/p>$/,'</div>');
       return (record?.prefix || '')+rendered;
