@@ -324,6 +324,15 @@ body.connected #logout{border-color:#8fc4db;color:#397e9d;background:#f3fafe}
 
 .app-dialog{font:13px/1.5 Arial,"Segoe UI",sans-serif;color:#505a64;background:#fff;border:1px solid #c8d5e2;border-radius:5px;padding:24px;max-height:calc(100dvh - 32px);max-width:calc(100vw - 32px);box-shadow:0 10px 45px #22384e30}
 .app-dialog::backdrop{background:#24384c55}
+.editor-table-dialog{width:480px}
+.editor-table-dimensions,.editor-table-commands{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.editor-table-commands{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:8px}
+.editor-table-commands button{min-height:32px;padding:6px 8px}
+.editor-table-dimensions label{margin:0}
+.editor-table-headers{display:flex;align-items:center;gap:8px;margin:12px 0 0}
+.editor-table-headers input{width:auto;margin:0}
+.editor-table-error{color:#a33c32;margin:8px 0 0}
+.editor-table-error:empty{display:none}
 #format-link-dialog{padding:24px;max-width:calc(100vw - 32px)}
 #format-link-form{display:flex;flex-direction:column;max-height:calc(100dvh - 82px)}
 #format-link-title{font-size:20px;font-weight:600;flex-shrink:0}

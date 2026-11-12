@@ -182,7 +182,7 @@ function readTable(node) {
     if (!cells.length || cells.some(c=>!['td','th'].includes(c.tagName))) throw Error('Особые ячейки.');
     if (index===0) {width=cells.length;headings=cells.every(c=>c.tagName==='th');}
     if (cells.length!==width || cells.some(c=>c.tagName!==(index===0&&headings?'th':'td'))) throw Error('Особая структура таблицы.');
-    return cells.map(cell=>{onlyAttrs(cell);return inlineNodes(cell.childNodes || [],true);});
+    return cells.map(cell=>{onlyAttrs(cell);return listText(cell.childNodes || []);});
   });
   if (width * rows.length > 1000) throw Error('Большая таблица.');
   return {withHeadings:headings,stretched:false,content};
@@ -293,7 +293,7 @@ export class EditorDocument {
     const tree=parseFragment(html,{sourceCodeLocationInfo:true,onParseError:()=>{errors=true;}});
     let cursor=0,sourceNodes=tree.childNodes;
     const meaningful=children(tree),wrapper=meaningful.length===1&&meaningful[0];
-    if(wrapper?.tagName==='div'&&!wrapper.attrs?.length&&wrapper.sourceCodeLocation?.startTag&&wrapper.sourceCodeLocation?.endTag&&children(wrapper).some(node=>['ul','ol'].includes(node.tagName))){
+    if(wrapper?.tagName==='div'&&!wrapper.attrs?.length&&wrapper.sourceCodeLocation?.startTag&&wrapper.sourceCodeLocation?.endTag&&children(wrapper).some(node=>['ul','ol','table'].includes(node.tagName))){
       cursor=wrapper.sourceCodeLocation.startTag.endOffset;this.head=html.slice(0,cursor);sourceNodes=wrapper.childNodes;
     }
     const bodyStart=cursor;

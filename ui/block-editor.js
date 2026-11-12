@@ -6,6 +6,8 @@ import { EditorDocument, documentSignature, cleanInline, TEXT_FLOW_TAGS, isLegac
 import { safeNoteFragment } from './content.js';
 import { standaloneYouTubeId } from './youtube.js';
 import { makeVideoEditor } from './video-edit.js';
+import { validTableSize } from './table-dialog.js';
+import { tableStrings } from './strings.js';
 import { focusContent, editableTarget } from './editor-focus.js';
 import { ALIGNMENTS, normalizeColor, normalizeFontFamily, normalizeFontSize } from './editor-styles.js';
 
@@ -81,6 +83,16 @@ export class BlockSurface {
       render(){const element=super.render();element.dataset.sourceTag=/^\s*<p[\s>]/i.test(this.source)?'p':'div';return element;}
     }
     class Header extends lib.Header {static get sanitize(){return {text:INLINE_RULES,level:false};}}
+    class Table extends lib.Table {
+      static get sanitize(){return {content:INLINE_RULES,withHeadings:false,stretched:false};}
+      save(container) {
+        const data = super.save(container);
+        // The vendor tool drops blank rows. Keep the full grid for save and Undo/Redo.
+        data.content = [...container.querySelectorAll('.tc-row')].map(row =>
+          [...row.querySelectorAll('.tc-cell')].map(cell => cleanInline(cell.innerHTML)));
+        return data;
+      }
+    }
     class Quote extends lib.Quote {static get sanitize(){return {text:INLINE_RULES,caption:INLINE_RULES,alignment:false};}renderSettings(){return [];}}
     function inlineFormat(command,label,tag,rules) {
       return class {
@@ -163,7 +175,7 @@ export class BlockSurface {
         paragraph:{class:Paragraph,config:{preserveBlank:true},tunes:['alignment']},
         header:{class:Header,config:{levels:[1,2,3,4,5,6],defaultLevel:2},tunes:['alignment']},
         list:{class:lib.List,inlineToolbar:true,tunes:['alignment'],config:{defaultStyle:'unordered',maxLevel:12,counterTypes:['numeric','lower-alpha','upper-alpha','lower-roman','upper-roman']}},
-        table:{class:lib.Table,inlineToolbar:true,tunes:['alignment'],config:{rows:2,cols:2}},
+        table:{class:Table,inlineToolbar:true,tunes:['alignment'],config:{rows:2,cols:2}},
         quote:{class:Quote,inlineToolbar:true,tunes:['alignment']},code:lib.Code,delimiter:lib.Delimiter,
         marker:lib.Marker,inlineCode:lib.InlineCode,
         textColor:ColorSanitizer,
@@ -238,6 +250,64 @@ export class BlockSurface {
     return {data,removed:this.document.missingProtected(data.blocks),changed:documentSignature(data.blocks)!==this.baseline};
   }
   output(data,removed){return this.images.decode(this.document.serialize(data.blocks,removed));}
+  tableSelection() {
+    const range = this.selectionRange();
+    const node = range && (range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement);
+    const cell = node?.closest('.tc-cell');
+    const block = node && this.editor.blocks.getBlockByElement(node);
+    if (!cell || block?.name !== 'table') return { blockId: block?.id };
+    const row = cell.parentElement;
+    return {
+      blockId: block.id,
+      table: { cell, row: [...row.parentElement.children].indexOf(row), column: [...row.children].indexOf(cell), rows: row.parentElement.children.length, columns: row.children.length },
+    };
+  }
+  async tableCommand(command, selection, size) {
+    const editor = this.editor;
+    await this.capture();
+    if (!this.ready || this.editor !== editor) throw Error(tableStrings.stale);
+    const blocks = editor.blocks;
+    const focus = (id, row = 0, column = 0) => () => {
+      const cells = blocks.getById(id)?.holder.querySelectorAll('.tc-row')[row]?.querySelectorAll('.tc-cell');
+      cells?.[column]?.focus();
+    };
+    if (command === 'insert') {
+      const { rows, columns, withHeadings } = size;
+      if (!validTableSize(rows, columns)) throw Error(tableStrings.limit);
+      const index = selection.blockId ? blocks.getBlockIndex(selection.blockId) + 1 : blocks.getBlocksCount();
+      const content = Array.from({ length: rows }, () => Array(columns).fill(''));
+      const block = blocks.insert('table', { content, withHeadings }, {}, index, false);
+      await this.capture();
+      return focus(block.id);
+    }
+    const { blockId, table } = selection;
+    const block = blocks.getById(blockId);
+    if (!table?.cell.isConnected || !block?.holder.contains(table.cell)) throw Error(tableStrings.stale);
+    if (command === 'remove') {
+      blocks.delete(blocks.getBlockIndex(blockId));
+      await this.capture();
+      return () => { if (this.ready) editor.caret.setToFirstBlock(); };
+    }
+    const { blocks: saved } = await this.snapshot();
+    const data = saved.find(item => item.id === blockId)?.data;
+    const { row, column } = table;
+    const rows = data?.content;
+    const columns = rows?.[row]?.length;
+    if (!columns || column < 0 || column >= columns) throw Error(tableStrings.stale);
+    if (command === 'rowBefore' || command === 'rowAfter') {
+      if (!validTableSize(rows.length + 1, columns)) throw Error(tableStrings.limit);
+      rows.splice(row + Number(command === 'rowAfter'), 0, Array(columns).fill(''));
+    } else if (command === 'columnBefore' || command === 'columnAfter') {
+      if (!validTableSize(rows.length, columns + 1)) throw Error(tableStrings.limit);
+      for (const cells of rows) cells.splice(column + Number(command === 'columnAfter'), 0, '');
+    } else if (command === 'rowDelete' && rows.length > 1) rows.splice(row, 1);
+    else if (command === 'columnDelete' && columns > 1) {
+      for (const cells of rows) cells.splice(column, 1);
+    } else throw Error(tableStrings.stale);
+    await blocks.update(blockId, data);
+    await this.capture();
+    return focus(blockId, Math.min(row, rows.length - 1), Math.min(column, rows[0].length - 1));
+  }
   async insertImage(file){
     if(!this.ready)return;
     await this.capture();const editor=this.editor;

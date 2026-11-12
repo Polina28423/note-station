@@ -1,6 +1,8 @@
 import { ImageSession } from './images.js';
 import { normalizePastedHtml } from './paste-normalizer.js';
-import { normalizeImportedText } from './editor-document.js';
+import { normalizeImportedText, renderBlock } from './editor-document.js';
+import { validTableSize } from './table-dialog.js';
+import { tableStrings } from './strings.js';
 import { standaloneYouTubeId, youtubeEmbedHtml } from './youtube.js';
 import { makeVideoEditor } from './video-edit.js';
 import { bindExternalLinks, updateLink } from './links.js';
@@ -165,6 +167,72 @@ export class ClassicSurface {
     this.images.paint(editor.getBody());this.update();
   }
   changed() { return this.editor.getContent() !== this.baseline; }
+  tableSelection() {
+    const range = this.selectionRange();
+    const node = range && (range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement);
+    const cell = node?.closest('td,th');
+    const table = cell?.closest('table');
+    return { range, table: table && { cell, node: table, rows: table.rows.length, columns: [...cell.parentElement.cells].reduce((total, item) => total + item.colSpan, 0) } };
+  }
+  tableCommand(command, selection, size) {
+    const editor = this.editor;
+    const body = editor.getBody();
+    if (command === 'insert') {
+      const { rows, columns, withHeadings } = size;
+      if (!validTableSize(rows, columns)) throw Error(tableStrings.limit);
+      const range = editor.getDoc().createRange();
+      let anchor = selection.range?.startContainer;
+      if (anchor === body) range.setStart(body, selection.range.startOffset);
+      else if (anchor && body.contains(anchor)) {
+        while (anchor.parentNode !== body) anchor = anchor.parentNode;
+        range.setStartAfter(anchor);
+      } else {
+        range.selectNodeContents(body);
+        range.collapse(false);
+      }
+      const content = Array.from({ length: rows }, () => Array(columns).fill(''));
+      editor.selection.setRng(range);
+      editor.undoManager.transact(() => editor.insertContent(renderBlock({ type: 'table', data: { content, withHeadings } })));
+    } else {
+      const { table } = selection;
+      const commands = {
+        rowBefore: 'mceTableInsertRowBefore', rowAfter: 'mceTableInsertRowAfter', rowDelete: 'mceTableDeleteRow',
+        columnBefore: 'mceTableInsertColBefore', columnAfter: 'mceTableInsertColAfter', columnDelete: 'mceTableDeleteCol', remove: 'mceTableDelete',
+      };
+      if (!commands[command] || !body.contains(table?.cell) || table.cell.closest('table') !== table.node) throw Error(tableStrings.stale);
+      if ((command === 'rowBefore' || command === 'rowAfter') && !validTableSize(table.rows + 1, table.columns)) throw Error(tableStrings.limit);
+      if ((command === 'columnBefore' || command === 'columnAfter') && !validTableSize(table.rows, table.columns + 1)) throw Error(tableStrings.limit);
+      const rows = [...table.node.rows];
+      const headings = !table.node.tHead && rows.every((row, index) => [...row.cells].every(cell =>
+        cell.tagName === (index === 0 ? 'TH' : 'TD') && cell.rowSpan === 1 && cell.colSpan === 1));
+      editor.selection.setCursorLocation(table.cell, 0);
+      editor.undoManager.transact(() => {
+        editor.execCommand(commands[command]);
+        if (headings && command.startsWith('row') && table.node.isConnected) {
+          // Keep a single header row when TinyMCE duplicates or removes its cells.
+          const selectedCell = editor.selection.getNode()?.closest('td,th');
+          [...table.node.rows].forEach((row, index) => {
+            const tag = index === 0 ? 'TH' : 'TD';
+            for (const cell of [...row.cells]) {
+              if (cell.tagName === tag) continue;
+              const replacement = editor.getDoc().createElement(tag);
+              for (const attr of cell.attributes) if (attr.name !== 'scope') replacement.setAttribute(attr.name, attr.value);
+              replacement.append(...cell.childNodes);
+              cell.replaceWith(replacement);
+              if (selectedCell === cell) editor.selection.setCursorLocation(replacement, 0);
+            }
+          });
+        }
+      });
+    }
+    this.update();
+    const range = editor.selection.getRng().cloneRange();
+    return () => {
+      if (this.editor !== editor) return;
+      editor.focus();
+      if (body.contains(range.startContainer) && body.contains(range.endContainer)) editor.selection.setRng(range);
+    };
+  }
   spellingSnapshot(){
     const body=this.editor.getBody();
     // A single body region retains offsets across inline formatting and nested lists.

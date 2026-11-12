@@ -1,4 +1,5 @@
-import { spellingStrings, typographyStrings, linkStrings, pasteStrings, noteTagStrings, imageStrings, htmlStrings } from './strings.js';
+import { spellingStrings, typographyStrings, linkStrings, pasteStrings, noteTagStrings, imageStrings, htmlStrings, tableStrings } from './strings.js';
+import { showTableDialog } from './table-dialog.js';
 import { snapshotIsCurrent, selectionInSnapshot } from './spelling-adapter.js';
 import { htmlToText } from './content.js';
 import { ClassicSurface } from './classic-editor.js';
@@ -15,6 +16,19 @@ export class NoteEditor {
     $('cancel-edit').addEventListener('click',()=>this.leave());
     $('editor-undo').addEventListener('click',()=>this.travel('undo'));
     $('editor-redo').addEventListener('click',()=>this.travel('redo'));
+    const tableButton = $('editor-table');
+    tableButton?.setAttribute('aria-label', tableStrings.title);
+    if (tableButton) tableButton.title = tableStrings.title;
+    tableButton?.addEventListener('pointerdown', event => event.preventDefault());
+    tableButton?.addEventListener('click', () => {
+      if (tableButton.disabled) return;
+      const surface = this.surface;
+      const selection = surface.tableSelection();
+      showTableDialog(selection.table, (command, size) => {
+        if (surface !== this.surface || !this.active || this.saving || this.historyBusy || this.checking) throw Error(tableStrings.stale);
+        return surface.tableCommand(command, selection, size);
+      }, tableButton);
+    });
     if($('insert-image')){$('insert-image').title=imageStrings.add;$('insert-image').setAttribute('aria-label',imageStrings.add);}
     $('insert-image')?.addEventListener('pointerdown',event=>event.preventDefault());
     $('insert-image')?.addEventListener('click',()=>{if(this.active&&!this.saving)$('image-file').click();});
@@ -96,7 +110,7 @@ export class NoteEditor {
     window.addEventListener('beforeunload',e=>{if(this.dirty()||this.saving){e.preventDefault();e.returnValue='';}});
     window.addEventListener('keydown',e=>{
       if(!this.active)return;
-      if($('format-link-dialog').open||$('style-color-dialog').open||$('spelling-dialog')?.open||$('note-tags-dialog')?.open||$('note-html-dialog')?.open||document.querySelector('.video-link-dialog[open]')){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s')e.preventDefault();return;}
+      if($('format-link-dialog').open||$('style-color-dialog').open||$('spelling-dialog')?.open||$('note-tags-dialog')?.open||$('note-html-dialog')?.open||document.querySelector('.video-link-dialog[open],.editor-table-dialog[open]')){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s')e.preventDefault();return;}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();this.openLink();return;}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();this.save();}
       if(this.mode==='blocks'&&(e.ctrlKey||e.metaKey)&&e.target.closest?.('#block-content')&&['z','y'].includes(e.key.toLowerCase())) {
@@ -155,6 +169,7 @@ export class NoteEditor {
     $('edit-state').textContent=this.saving?'Сохранение…':this.opening?'Открытие редактора…':this.dirty()?'Есть несохранённые изменения':'Нет изменений';
     const locked=this.saving||this.opening||this.historyBusy||this.checking;
     if($('insert-image'))$('insert-image').disabled=locked||!this.active;
+    if($('editor-table'))$('editor-table').disabled=locked||!this.active;
     $('paste-plain').disabled=locked||!this.active;
     $('note-tags-open').disabled=locked||!this.active||this.note?.encrypted;
     const spellingButton=$('check-spelling');if(spellingButton)spellingButton.disabled=locked||!this.active||!this.surface?.spellingSnapshot;
