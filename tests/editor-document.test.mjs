@@ -6,6 +6,15 @@ import { normalizeColor, safeStyles, safeInlineStyles, normalizeFontFamily, norm
 const load = html => { const doc=new EditorDocument(html);doc.bindBaseline(doc.blocks);return doc; };
 const clone = value => structuredClone(value);
 
+test('simple tables inside a note wrapper keep headings, blank rows and cell paragraphs', () => {
+  const html = '<div><p>Before</p><table><tr><th><p>Heading</p></th><th>B</th></tr><tr><td><p>One</p><p>Two</p></td><td></td></tr><tr><td></td><td></td></tr></table></div>';
+  const doc = load(html);
+  assert.equal(doc.fragments.size, 0);
+  assert.deepEqual(doc.blocks[1].data.content, [['Heading', 'B'], ['One<br>Two', ''], ['', '']]);
+  assert.equal(doc.blocks[1].data.withHeadings, true);
+  assert.equal(doc.serialize(doc.blocks), html);
+});
+
 test('copied rich-text wrapper imports nested lists, math text and blank paragraphs without protected content',()=>{
   const html=readFileSync(new URL('./fixtures/legacy-copied-lists.html',import.meta.url),'utf8'),doc=load(html);
   assert.equal(doc.fragments.size,0);assert.equal(doc.blocks.length,11);assert.equal(doc.serialize(doc.blocks),html);
