@@ -33,6 +33,7 @@ module.exports=async(page,base)=>{
   await page.keyboard.type(' updated');await page.locator('#block-content [id="ext-gen607"]').filter({hasText:'updated'}).waitFor();
   await page.locator('#editor-undo').click();await page.waitForFunction(()=>!document.querySelector('#block-content [id="ext-gen607"]').textContent.includes('updated'));
   await page.locator('#editor-redo').click();await page.locator('#block-content [id="ext-gen607"]').filter({hasText:'updated'}).waitFor();
+  await page.waitForFunction(()=>!document.getElementById('paste-plain').disabled);
   await page.evaluate(()=>{
     const span=[...document.querySelectorAll('#block-content span')].find(element=>element.lastChild?.nodeType===Node.TEXT_NODE&&element.lastChild.textContent==='example-password-three');
     span.closest('.ce-paragraph').focus();const range=document.createRange();range.selectNodeContents(span.lastChild);range.collapse(false);const selection=document.getSelection();selection.removeAllRanges();selection.addRange(range);
