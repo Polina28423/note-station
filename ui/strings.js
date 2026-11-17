@@ -7,6 +7,12 @@ export const historyStrings = Object.freeze({
   ready: 'Проверьте текст перед восстановлением. Будет создана новая версия.',
   version: 'Версия',
 });
+export const activityStrings = Object.freeze({
+  frequent: 'Часто открываемые заметки',
+  empty: 'Пока нет открытых заметок',
+  hint: 'Откройте заметку, и она появится здесь.',
+  restoreFailed: 'Не удалось открыть последнюю заметку.',
+});
 export const tableStrings = Object.freeze({
   title: 'Таблица', insert: 'Вставить таблицу', rows: 'Строки', columns: 'Столбцы', headers: 'Первая строка — заголовки',
   close: 'Закрыть', limit: 'Укажите от 1 до 50 строк и столбцов. В таблице может быть не больше 1000 ячеек.',

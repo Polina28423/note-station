@@ -8,9 +8,10 @@ import { bindNoteHistory } from './history.js';
 import { NoteEditor } from './editor.js';
 import { restoreAtStartup } from './startup.js';
 import { bindPanelResizing } from './panels.js';
-import { notebookCounts, visibleNotebooks, visibleNotes, noteCountLabel, notebookCountLabel, groupNotebooks, notesInShelf } from './library.js';
+import { notebookCounts, visibleNotebooks, visibleNotes, noteCountLabel, notebookCountLabel, groupNotebooks, notesInShelf, frequentNotes, restoredNoteLocation } from './library.js';
 import { htmlToText, safeNoteFragment } from './content.js';
-import { loadConnection, saveConnection, loadEditorMode, saveEditorMode } from './preferences.js';
+import { loadConnection, saveConnection, loadEditorMode, saveEditorMode, noteActivityKey, loadNoteActivity, saveNoteActivity, recordNoteOpen } from './preferences.js';
+import { activityStrings } from './strings.js';
 
 const $ = id => document.getElementById(id);
 $('profile-settings').addEventListener('click', () => {
@@ -34,7 +35,10 @@ let notebooks = [], notes = [], notebookId = '', selectedId = '', noteRequest = 
 const collapsedShelves = new Set();
 let busy = false, view = 'notes', pinned = new Set(), pinKey = '', fontSize = 16, copyText = '';
 let preferredEditor='blocks';
-try { preferredEditor=loadEditorMode(localStorage); } catch {}
+let activityStorage, activityKey = '', activity = loadNoteActivity();
+let showFrequent = false;
+try { activityStorage=window.localStorage; preferredEditor=loadEditorMode(activityStorage); } catch {}
+$('frequent-notes-label').textContent = activityStrings.frequent;
 const noteEditor = new NoteEditor({
   mode: preferredEditor,
   openExternal: url => invoke('open_external_url',{url}),
@@ -150,7 +154,12 @@ function setView(next) {
   $('note-list-panel').hidden = view !== 'notes';
   $('reader').hidden = view !== 'notes';
   if (view !== 'notes') setFocusMode(false);
-  $('show-all-notes').classList.toggle('selected', view === 'notes' && !notebookId && !selectedShelf);
+  const all = view === 'notes' && !showFrequent && !notebookId && !selectedShelf;
+  const frequent = view === 'notes' && showFrequent;
+  for (const [id, selected] of [['show-all-notes', all], ['show-frequent-notes', frequent]]) {
+    $(id).classList.toggle('selected', selected);
+    $(id).setAttribute('aria-pressed', String(selected));
+  }
 }
 function setFocusMode(enabled) {
   $('workspace').classList.toggle('focus-mode', enabled);
@@ -171,17 +180,24 @@ function togglePin(id) {
   try { localStorage.setItem(pinKey, JSON.stringify([...pinned])); } catch { status('Закрепление доступно до закрытия приложения: настройки не удалось сохранить.', true); }
   renderNotebooks();
 }
-async function chooseNotebook(id) {
+async function chooseNotebook(id, frequent = false) {
   if (busy || !await noteEditor.leave()) return;
+  showFrequent = frequent;
   notebookId = id; selectedShelf = ''; $('search').value = ''; clearReader();
+  if (id && activity.notebookId !== id) {
+    activity = { ...activity, notebookId: id, noteId: '' };
+    saveNoteActivity(activityStorage, activityKey, activity);
+  }
   setView('notes'); renderNotebooks(); renderNotes();
 }
 async function chooseShelf(key) {
   if (busy || !await noteEditor.leave()) return;
+  showFrequent = false;
   selectedShelf = key; notebookId = ''; $('search').value = ''; clearReader();
   setView('notes'); renderNotebooks(); renderNotes();
 }
 function selectionTitle() {
+  if (showFrequent) return activityStrings.frequent;
   if (notebookId) return notebooks.find(n => n.object_id === notebookId)?.title || 'Без названия';
   if (selectedShelf) return groupNotebooks(notebooks).shelves.find(s => s.key === selectedShelf)?.label || 'Полка';
   return 'Все заметки';
@@ -235,6 +251,7 @@ function reset() {
   collections.reset();
   $('switch-account').hidden = true;
   notebooks = []; notes = []; notebookId = ''; selectedShelf = ''; collapsedShelves.clear(); pinned.clear(); clearReader();
+  showFrequent = false; activityKey = ''; activity = loadNoteActivity();
   document.body.classList.remove('connected'); setFocusMode(false);
   $('notes').replaceChildren(); $('notebooks').replaceChildren(); $('pinned-notebooks').replaceChildren(); $('notebook-grid').replaceChildren(); $('search').value = '';
   $('notebook-search').value = '';
@@ -337,14 +354,21 @@ function renderNotebooks() {
   $('pin-current').setAttribute('aria-label', $('pin-current').title);
 }
 function renderNotes() {
-  const filtered = visibleNotes(notesInShelf(notes, notebooks, selectedShelf), notebookId, $('search').value, $('note-sort').value);
+  const ranked = frequentNotes(notes, activity);
+  const source = showFrequent ? ranked : notesInShelf(notes, notebooks, selectedShelf);
+  const filtered = visibleNotes(source, notebookId, $('search').value, showFrequent ? 'original' : $('note-sort').value);
+  $('frequent-notes-count').textContent = ranked.length;
+  $('note-sort').hidden = showFrequent;
   $('list-title').textContent = selectionTitle();
   $('list-title').title = $('list-title').textContent;
   $('count').textContent = noteCountLabel(filtered.length);
   $('notes').replaceChildren();
   if (!filtered.length) {
     const empty = make('div', 'empty-state list-empty');
-    empty.append(make('span', 'empty-symbol', '⌕'), make('h2', '', $('search').value ? 'Ничего не найдено' : 'Здесь пока нет заметок'), make('p', '', $('search').value ? 'Попробуйте другой заголовок.' : 'Выберите другой блокнот.'));
+    const searching = !!$('search').value;
+    empty.append(make('span', 'empty-symbol', '⌕'),
+      make('h2', '', searching ? 'Ничего не найдено' : showFrequent ? activityStrings.empty : 'Здесь пока нет заметок'),
+      make('p', '', searching ? 'Попробуйте другой заголовок.' : showFrequent ? activityStrings.hint : 'Выберите другой блокнот.'));
     $('notes').append(empty);
   }
   for (const note of filtered) {
@@ -365,17 +389,26 @@ function renderNotes() {
     button.addEventListener('keydown', event => {
       const index = filtered.findIndex(n => n.object_id === note.object_id);
       const next = index + (event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0);
-      if (next !== index && filtered[next] && !busy) { event.preventDefault(); openNote(filtered[next].object_id); $('notes').children[next]?.focus(); }
+      if (next !== index && filtered[next] && !busy) { event.preventDefault(); openNote(filtered[next].object_id); }
     });
     $('notes').append(button);
   }
 }
 async function openNote(id) {
   if (busy || !await noteEditor.leave()) return;
+  await loadNote(id);
+}
+function renderNotesWithFocus() {
+  const keepFocus = $('notes').contains(document.activeElement);
+  renderNotes();
+  if (keepFocus) $('notes').querySelector('.note-row.selected')?.focus();
+}
+async function loadNote(id, restoring = false) {
+  const countOpen = !restoring && currentNote?.object_id !== id;
   const request = ++noteRequest;
   currentNote = null;
   $('note-history').disabled = true;noteHtml.reset();
-  selectedId = id; copyText = ''; renderNotes();
+  selectedId = id; copyText = ''; renderNotesWithFocus();
   $('reader-empty').hidden = true; $('reader-document').hidden = false;
   $('note-title').textContent = 'Загрузка…'; $('note-content').replaceChildren(); $('copy-note').disabled = true;
   $('note-meta').textContent = '';
@@ -385,14 +418,25 @@ async function openNote(id) {
     const note = await invoke('get_note', { id });
     if (request !== noteRequest) return;
     currentNote = note; displayNote(note);
+    if (countOpen) {
+      activity = recordNoteOpen(activity, id, parent?.object_id || '');
+      saveNoteActivity(activityStorage, activityKey, activity);
+      renderNotesWithFocus();
+    }
     $('reader-document').scrollTop = 0;
-    status('Заметка загружена');
+    if (!restoring) status('Заметка загружена');
+    return true;
   } catch (error) {
     if (request !== noteRequest) return;
-    $('note-title').textContent = 'Не удалось открыть заметку'; status(String(error), true);
+    if (restoring) clearReader();
+    else $('note-title').textContent = 'Не удалось открыть заметку';
+    status(restoring ? `${activityStrings.restoreFailed} ${error}` : String(error), true);
+    if (restoring) renderNotes();
+    return false;
   }
 }
 $('show-all-notes').addEventListener('click', () => chooseNotebook(''));
+$('show-frequent-notes').addEventListener('click', () => chooseNotebook('', true));
 $('notebook-search').addEventListener('input', renderNotebooks);
 $('notebook-sort').addEventListener('change', renderNotebooks);
 $('note-sort').addEventListener('change', renderNotes);
@@ -470,25 +514,37 @@ async function updateSavedSessionControls() {
   $('forget-session').hidden = !saved;
 }
 async function showWorkspace(result) {
-  $('welcome-panel').hidden = true; $('switch-account').hidden = false;
+  showSessionChecking();
+  $('startup-detail').textContent = 'Загружаем блокноты и заметки…';
   const info = result.connection;
   notebooks = result.notebooks; notes = []; loadPins(info.server, info.account);
-  document.body.classList.add('connected'); notebookId = ''; selectedShelf = ''; collapsedShelves.clear(); setView('notes');
+  activityKey = noteActivityKey(info);
+  activity = loadNoteActivity(activityStorage, activityKey);
+  showFrequent = false;
+  notebookId = ''; selectedShelf = ''; collapsedShelves.clear(); setView('notes');
+  $('search').value = ''; $('notebook-search').value = '';
   $('user-name').textContent = info.account; $('user-avatar').textContent = info.account.slice(0, 1).toUpperCase();
   $('profile-server').textContent = new URL(info.server).host;
   $('profile-server').title = info.server;
   $('profile-menu').open = false;
-  $('login-panel').hidden = true; $('workspace').hidden = false;
-  $('startup-panel').hidden = true;
-  $('refresh').hidden = false; $('logout').hidden = false;
   $('restore-session').hidden = true; $('forget-session').hidden = true;
   $('connection').textContent = info.server + (info.mode === 'strict' ? '' : info.mode === 'plain_http' ? ' · HTTP без шифрования' : ' · сертификат не проверяется');
   $('profile-server').title = $('connection').textContent;
-  renderNotebooks(); clearReader(); renderNotes();
+  clearReader();
   try {
-    notes = await invoke('list_notes'); renderNotebooks(); renderNotes();
+    notes = await invoke('list_notes');
+    const location = restoredNoteLocation(notes, notebooks, activity);
+    notebookId = location.notebookId;
+    setView('notes'); renderNotebooks(); renderNotes();
+    if (location.noteId && !await loadNote(location.noteId, true)) return;
     status(result.notice || `Подключено · ${notebookCountLabel(notebooks.length)} · ${noteCountLabel(notes.length)}`, !!result.notice);
-  } catch(error) { status(String(error), true); }
+  } catch(error) { renderNotebooks(); renderNotes(); status(String(error), true); }
+  finally {
+    document.body.classList.add('connected');
+    $('startup-panel').hidden = true; $('workspace').hidden = false;
+    for (const id of ['refresh', 'logout', 'switch-account']) $(id).hidden = false;
+    $('notes').querySelector('.note-row.selected')?.scrollIntoView({ block: 'nearest' });
+  }
 }
 async function restoreSession() {
   if (busy) return;
