@@ -1,8 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { notebookCounts, visibleNotebooks, visibleNotes, noteCountLabel, notebookCountLabel, groupNotebooks, notesInShelf, shelfKey } from '../ui/library.js';
+import { notebookCounts, visibleNotebooks, visibleNotes, noteCountLabel, notebookCountLabel, groupNotebooks, notesInShelf, shelfKey, frequentNotes, restoredNoteLocation } from '../ui/library.js';
 const books = [{object_id:'a',title:'Работа 10'},{object_id:'b',title:'Работа 2'},{object_id:'c',title:'Личное'}];
 const notes = [{object_id:'1',parent_id:'a',title:'План'},{object_id:'2',parent_id:'b',title:'Встреча'},{object_id:'3',parent_id:'b',title:'Планы'}];
+test('frequent notes rank by openings then recency and unavailable IDs are ignored on restore', () => {
+  const activity = { notebookId: 'a', noteId: '2', opened: [{ id: '3', count: 1 }, { id: '2', count: 1 }, { id: 'gone', count: 99 }, { id: '1', count: 2 }] };
+  assert.deepEqual(frequentNotes(notes, activity).map(note => note.object_id), ['1', '3', '2']);
+  assert.deepEqual(restoredNoteLocation(notes, books, activity), { notebookId: 'b', noteId: '2' });
+  assert.deepEqual(restoredNoteLocation(notes, books, { ...activity, noteId: 'gone' }), { notebookId: 'a', noteId: '' });
+  assert.deepEqual(restoredNoteLocation(notes, books, { ...activity, notebookId: 'gone', noteId: 'gone' }), { notebookId: '', noteId: '' });
+});
 test('counts include only their notebook and count order does not mutate source', () => {
  const counts = notebookCounts(notes);
  assert.equal(counts.get('b'),2);
