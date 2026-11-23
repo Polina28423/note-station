@@ -1,0 +1,42 @@
+{
+  "@editorjs/caret@1.1.0": {
+    "file": "editorjs-caret-1.1.0.txt",
+    "source": "https://raw.githubusercontent.com/editor-js/utils/711a6de9058263a8024e3d43f152010d0ba2db82/LICENSE",
+    "sha256": "5955c6e9d1de490608d7a41b4cfff00e769867ddb5fac2999b8efc874500e3a1"
+  },
+  "@editorjs/dom@1.2.0": {
+    "file": "editorjs-dom-1.2.0.txt",
+    "source": "https://raw.githubusercontent.com/editor-js/utils/f658081fad257a242f97b1e00c52c227936f9635/LICENSE",
+    "sha256": "5955c6e9d1de490608d7a41b4cfff00e769867ddb5fac2999b8efc874500e3a1"
+  },
+  "@codexteam/icons@0.0.5": {
+    "file": "codexteam-icons-0.0.5.txt",
+    "source": "https://raw.githubusercontent.com/codex-team/icons/master/LICENSE",
+    "sha256": "bf722899da473f97a22698ffd5e4dca9153209691afd4f0a1f38541ca97ddcb1"
+  },
+  "@editorjs/helpers@1.2.3": {
+    "file": "editorjs-helpers-1.2.3.txt",
+    "source": "https://raw.githubusercontent.com/editor-js/utils/5ad97fb0ec0e973742ea43e00e7d148c43a9ed3d/LICENSE",
+    "sha256": "5955c6e9d1de490608d7a41b4cfff00e769867ddb5fac2999b8efc874500e3a1"
+  },
+  "@codexteam/icons@0.0.4": {
+    "file": "codexteam-icons-0.0.4.txt",
+    "source": "https://raw.githubusercontent.com/codex-team/icons/master/LICENSE",
+    "sha256": "bf722899da473f97a22698ffd5e4dca9153209691afd4f0a1f38541ca97ddcb1"
+  },
+  "@editorjs/dom@0.0.5": {
+    "file": "editorjs-dom-0.0.5.txt",
+    "source": "https://raw.githubusercontent.com/editor-js/utils/b56e61a08dde38513757df7825dde3ca055c069d/LICENSE",
+    "sha256": "5955c6e9d1de490608d7a41b4cfff00e769867ddb5fac2999b8efc874500e3a1"
+  },
+  "@editorjs/helpers@0.0.4": {
+    "file": "editorjs-helpers-0.0.4.txt",
+    "source": "https://raw.githubusercontent.com/editor-js/utils/3d3b989da8cafa12c3c76325aef427035276e654/LICENSE",
+    "sha256": "5955c6e9d1de490608d7a41b4cfff00e769867ddb5fac2999b8efc874500e3a1"
+  },
+  "@codexteam/icons@0.0.6": {
+    "file": "codexteam-icons-0.0.6.txt",
+    "source": "https://raw.githubusercontent.com/codex-team/icons/master/LICENSE",
+    "sha256": "bf722899da473f97a22698ffd5e4dca9153209691afd4f0a1f38541ca97ddcb1"
+  }
+}

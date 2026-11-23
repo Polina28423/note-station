@@ -1,0 +1,35 @@
+{
+  "rust-analyzer.linkedProjects": ["Cargo.toml"],
+  "rust-analyzer.server.extraEnv": {
+    "CARGO_HOME": "${workspaceFolder}\\.tools\\cargo",
+    "RUSTUP_HOME": "${workspaceFolder}\\.tools\\rustup",
+    "PATH": "${workspaceFolder}\\.tools\\cargo\\bin;${env:Path}"
+  },
+  "rust-analyzer.cargo.extraArgs": ["--locked"],
+  "rust-analyzer.debug.engine": "ms-vscode.cpptools",
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  },
+  "debug.allowBreakpointsEverywhere": true,
+  "terminal.integrated.cwd": "${workspaceFolder}",
+  "terminal.integrated.env.windows": {
+    "CARGO_HOME": "${workspaceFolder}\\.tools\\cargo",
+    "RUSTUP_HOME": "${workspaceFolder}\\.tools\\rustup",
+    "PATH": "${workspaceFolder}\\.tools\\cargo\\bin;${env:PATH}"
+  },
+  "files.exclude": {
+    "**/.tools": true,
+    "**/target": true
+  },
+  "search.exclude": {
+    "**/.tools/**": true,
+    "**/target/**": true,
+    "original/**": true,
+    "ui/vendor/**": true
+  },
+  "files.watcherExclude": {
+    "**/.tools/**": true,
+    "**/target/**": true,
+    "**/original/**": true
+  }
+}

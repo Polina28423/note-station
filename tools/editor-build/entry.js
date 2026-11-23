@@ -1,0 +1,10 @@
+export { default as EditorJS } from '@editorjs/editorjs';
+export { default as Paragraph } from '@editorjs/paragraph';
+export { default as Header } from '@editorjs/header';
+export { default as List } from '@editorjs/list';
+export { default as Table } from '@editorjs/table';
+export { default as Quote } from '@editorjs/quote';
+export { default as Code } from '@editorjs/code';
+export { default as Delimiter } from '@editorjs/delimiter';
+export { default as Marker } from '@editorjs/marker';
+export { default as InlineCode } from '@editorjs/inline-code';

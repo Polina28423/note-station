@@ -1,0 +1,54 @@
+# Editor dependencies
+
+These files are self-hosted in `ui/vendor/` and do not use a CDN at runtime.
+
+| Component | Version | License | Source |
+| --- | --- | --- | --- |
+| TinyMCE | 8.10.2 | GPL-2.0-or-later or commercial license; this prototype uses GPL mode | https://github.com/tinymce/tinymce |
+| DOMPurify | 3.4.17 | Apache-2.0 OR MPL-2.0 | https://github.com/cure53/DOMPurify |
+| Editor.js | 2.31.7 | Apache-2.0 | https://github.com/codex-team/editor.js |
+| Paragraph / Header / List / Table | 2.11.7 / 2.8.9 / 2.0.9 / 2.4.6 | MIT | https://github.com/editor-js |
+| Quote / Code / Delimiter | 2.7.6 / 2.9.4 / 1.4.2 | MIT | https://github.com/editor-js |
+| Marker / Inline Code | 1.4.0 / 1.5.2 | MIT | https://github.com/editor-js |
+| parse5 | 8.1.1 | MIT | https://github.com/inikulin/parse5 |
+| entities (parser dependency) | 9.0.0 | BSD-2-Clause | https://github.com/fb55/entities |
+
+Original license notices are retained in `ui/vendor/tinymce/license.txt` and
+`ui/vendor/dompurify/LICENSE`. Distribution of the app with TinyMCE is subject to
+its GPL terms unless a commercial license is obtained. The Rust and UI source
+for this prototype is present in this workspace; do not remove dependency notices.
+
+Packages were downloaded from the official npm registry. Their tarball SHA-512
+digests were checked against the registry's `dist.integrity` metadata before extraction.
+Only the editor runtime, selected plugins, skins and license files are included.
+
+Editor.js, selected tools and their runtime dependencies are bundled locally in
+`ui/vendor/editorjs/editorjs.bundle.js`; parse5 and entities are in `html-parser.js`.
+Their license texts, including transitive packages, are retained in
+`ui/vendor/editorjs/LICENSES.txt` and generated `*.LEGAL.txt` files.
+Some npm packages omit LICENSE files: supplemental upstream license copies and
+source URLs/SHA-256 are retained under `tools/editor-build/licenses/`.
+Pinned versions and npm tarball integrity hashes are recorded in
+`tools/editor-build/package-lock.json`. Installation uses `npm ci --ignore-scripts`.
+Build tooling esbuild and test tooling Playwright are development dependencies;
+they are not shipped in the app. TinyMCE remains available as the classic fallback,
+so its licensing requirements still apply to this distribution.
+
+## Встроенная проверка орфографии
+
+| Компонент | Версия / источник | Лицензия |
+| --- | --- | --- |
+| Spellbook | 0.4.2; https://github.com/helix-editor/spellbook | MPL-2.0 |
+| Русский словарь | Alexander I. Lebedev; `wooorm/dictionaries`, каталог `ru` | Условия BSD-подобной лицензии из `ru/license` |
+| Український словник | https://github.com/brown-uk/dict_uk; каталог `uk` | GPL-3.0 |
+| English (US) dictionary | SCOWL; каталог `en` | MIT AND BSD; полный состав уведомлений в `en/license` |
+
+Файлы словарей `.aff` и `.dic` включены без изменений из ревизии
+`8cfea406b505e4d7df52d5a19bce525df98c54ab` репозитория
+https://github.com/wooorm/dictionaries. Точные исходные URL и SHA-256 сохранены
+в `src-tauri/dictionaries/sources.json`. Исходные словари и тексты лицензий
+поставляются в этом репозитории. Тексты лицензий также встроены в приложение
+и доступны в панели орфографии, раздел «Словари и лицензии».
+
+Лицензия Spellbook сохранена в `src-tauri/dictionaries/spellbook-LICENSE`;
+исходники закреплённой версии доступны по ссылке на репозиторий и через Cargo.
